@@ -40,6 +40,7 @@ st.markdown("##  TransplantCare  Waitlist Death Risk")
 st.caption(
     "Interactive tool using a Random Forest model trained on liver transplant waitlist data "
     "to estimate death risk for educational purposes only."
+    "Made By Muhammad Moawiz Sipra"
 )
 
 st.markdown("---")
@@ -99,5 +100,9 @@ if predict_btn:
     st.caption(
         "Note: This model is built on historical waitlist data and is intended for study/demo use, "
         "not for real medical decision‑making."
+        "Made By Muhammad Moawiz Sipra"
+        "Rollno: BSDSF24A036"
+        
     )
+
 
