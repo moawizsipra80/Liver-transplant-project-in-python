@@ -3,9 +3,7 @@ import pandas as pd
 import numpy as np
 import pickle
 
-# -----------------------
 # Basic styling (background + fonts)
-# -----------------------
 st.set_page_config(
     page_title="TransplantCare – Waitlist Risk",
     page_icon="🩺",
@@ -26,10 +24,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-# -----------------------
 # Load saved objects
-# -----------------------
 @st.cache_resource
 def load_objects():
     clf = pickle.load(open('clf.pkl', 'rb'))
@@ -40,11 +35,8 @@ def load_objects():
     return clf, scaler, le_sex, le_abo, feature_cols
 
 clf, scaler, le_sex, le_abo, feature_cols = load_objects()
-
-# -----------------------
 # Header
-# -----------------------
-st.markdown("## 🩺 TransplantCare – Waitlist Death Risk")
+st.markdown("##  TransplantCare  Waitlist Death Risk")
 st.caption(
     "Interactive tool using a Random Forest model trained on liver transplant waitlist data "
     "to estimate death risk for educational purposes only."
@@ -53,9 +45,8 @@ st.caption(
 st.markdown("---")
 st.markdown("### Enter patient details")
 
-# -----------------------
 # Input form
-# -----------------------
+
 col1, col2 = st.columns(2)
 
 with col1:
@@ -68,11 +59,9 @@ with col2:
     abo = st.selectbox("Blood group", ['A', 'B', 'AB', 'O'])
 
 st.markdown("")
-predict_btn = st.button("🔮 Predict death risk")
-
-# -----------------------
+predict_btn = st.button(" Predict death risk")
 # Prediction
-# -----------------------
+
 if predict_btn:
     # encode
     sex_enc = le_sex.transform([sex])[0]
@@ -111,3 +100,4 @@ if predict_btn:
         "Note: This model is built on historical waitlist data and is intended for study/demo use, "
         "not for real medical decision‑making."
     )
+
