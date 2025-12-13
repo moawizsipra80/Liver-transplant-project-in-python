@@ -5,27 +5,44 @@ import pickle
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Basic styling (background + fonts)
+# -----------------------
+# Page config + basic light theme
+# -----------------------
 st.set_page_config(
     page_title="TransplantCare – Waitlist Risk",
     page_icon="🩺",
-    layout="centered"
+    layout="wide"
 )
 
+# Light background + clean font + nicer buttons
 st.markdown(
     """
     <style>
     .stApp {
-        background-color: #0f172a;  /* dark navy */
+        background-color: #f8fafc;  /* light slate / white-ish */
+        font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     .block-container {
-        padding-top: 2rem;
+        padding-top: 1.5rem;
         padding-bottom: 2rem;
+    }
+    h1, h2, h3, h4 {
+        color: #0f172a;
+    }
+    .stButton > button {
+        background-color: #0f766e;
+        color: white;
+        border-radius: 999px;
+        padding: 0.4rem 1.2rem;
+        border: none;
+    }
+    .stButton > button:hover {
+        background-color: #115e59;
     }
     </style>
     """,
     unsafe_allow_html=True,
-)
+)  # [web:270]
 
 # -----------------------
 # Load saved objects
@@ -42,7 +59,15 @@ def load_objects():
 clf, scaler, le_sex, le_abo, feature_cols = load_objects()
 
 # -----------------------
-# Header
+# Load dataset for EDA
+# -----------------------
+@st.cache_data
+def load_data():
+    df = pd.read_csv("transplant.csv")
+    return df
+
+# -----------------------
+# Header + layout
 # -----------------------
 st.markdown("## TransplantCare – Waitlist Death Risk")
 st.caption(
@@ -52,126 +77,238 @@ st.caption(
 )
 
 st.markdown("---")
-st.markdown("### Enter patient details")
+
+# Sidebar navigation
+st.sidebar.title("Navigation")
+page = st.sidebar.radio(
+    "Go to",
+    ["Risk Prediction", "EDA – Basic", "EDA – Advanced features"]
+)  # [web:334]
 
 # -----------------------
-# Input form
+# 1) Risk prediction page
 # -----------------------
-col1, col2 = st.columns(2)
+if page == "Risk Prediction":
+    st.markdown("### Enter patient details")
 
-with col1:
-    age = st.number_input("Age (years)", min_value=1, max_value=100, value=50)
-    year = st.number_input("Listing year", min_value=1985, max_value=2025, value=1995)
-    futime = st.number_input("Follow-up time (days)", min_value=0, max_value=2000, value=200)
+    col1, col2 = st.columns(2)
 
-with col2:
-    sex = st.selectbox("Sex", ['m', 'f'])
-    abo = st.selectbox("Blood group", ['A', 'B', 'AB', 'O'])
+    with col1:
+        age = st.number_input("Age (years)", min_value=1, max_value=100, value=50)
+        year = st.number_input("Listing year", min_value=1985, max_value=2025, value=1995)
+        futime = st.number_input("Follow-up time (days)", min_value=0, max_value=2000, value=200)
 
-st.markdown("")
-predict_btn = st.button("🔮 Predict death risk")
+    with col2:
+        sex = st.selectbox("Sex", ['m', 'f'])
+        abo = st.selectbox("Blood group", ['A', 'B', 'AB', 'O'])
+
+    st.markdown("")
+    predict_btn = st.button("🔮 Predict death risk")
+
+    if predict_btn:
+        sex_enc = le_sex.transform([sex])[0]
+        abo_enc = le_abo.transform([abo])[0]
+
+        row = pd.DataFrame([{
+            'age': age,
+            'year': year,
+            'futime': futime,
+            'sex_enc': sex_enc,
+            'abo_enc': abo_enc
+        }])
+
+        row_scaled = scaler.transform(row[feature_cols])
+
+        pred = clf.predict(row_scaled)[0]
+        proba = clf.predict_proba(row_scaled)[0][1]
+
+        st.markdown("---")
+        st.markdown("### Result")
+
+        mcol1, mcol2 = st.columns(2)
+        with mcol1:
+            st.metric("Estimated death probability", f"{proba:.1%}")
+        with mcol2:
+            label = "HIGH RISK (death)" if pred == 1 else "LOW RISK (no death)"
+            if pred == 1:
+                st.error(label)
+            else:
+                st.success(label)
+
+        st.caption(
+            "Note: This model is built on historical waitlist data and is intended for study/demo use, "
+            "not for real medical decision‑making."
+        )
 
 # -----------------------
-# Prediction
+# 2) EDA – Basic
 # -----------------------
-if predict_btn:
-    # encode
-    sex_enc = le_sex.transform([sex])[0]
-    abo_enc = le_abo.transform([abo])[0]
+elif page == "EDA – Basic":
+    st.markdown("### 📊 Explore dataset (basic EDA)")
 
-    # row (same feature order as training)
-    row = pd.DataFrame([{
-        'age': age,
-        'year': year,
-        'futime': futime,
-        'sex_enc': sex_enc,
-        'abo_enc': abo_enc
-    }])
+    try:
+        df = load_data()
+        show_raw = st.checkbox("Show first 10 rows of raw data")
+        if show_raw:
+            st.dataframe(df.head(10))
 
-    # scale
-    row_scaled = scaler.transform(row[feature_cols])
+        sns.set(style="whitegrid")
 
-    # predict
-    pred = clf.predict(row_scaled)[0]
-    proba = clf.predict_proba(row_scaled)[0][1]
+        st.markdown("#### Age distribution")
+        fig1, ax1 = plt.subplots(figsize=(5, 3))
+        sns.histplot(df["age"].dropna(), bins=20, kde=True, ax=ax1, color="#38bdf8")
+        ax1.set_xlabel("Age (years)")
+        st.pyplot(fig1)
 
-    st.markdown("---")
-    st.markdown("### Result")
+        st.markdown("#### Follow-up time (days)")
+        fig2, ax2 = plt.subplots(figsize=(5, 3))
+        sns.histplot(df["futime"], bins=30, kde=True, ax=ax2, color="#22c55e")
+        ax2.set_xlabel("Follow-up time (days)")
+        st.pyplot(fig2)
 
-    mcol1, mcol2 = st.columns(2)
-    with mcol1:
-        st.metric("Estimated death probability", f"{proba:.1%}")
-    with mcol2:
-        label = "HIGH RISK (death)" if pred == 1 else "LOW RISK (no death)"
-        if pred == 1:
-            st.error(label)
-        else:
-            st.success(label)
+        st.markdown("#### Outcome / event counts")
+        fig3, ax3 = plt.subplots(figsize=(5, 3))
+        sns.countplot(data=df, x="event", order=df["event"].value_counts().index, ax=ax3, palette="mako")
+        ax3.set_xlabel("Event")
+        ax3.set_ylabel("Count")
+        st.pyplot(fig3)
 
+        st.markdown("#### Sex vs event")
+        fig4, ax4 = plt.subplots(figsize=(5, 3))
+        sns.countplot(data=df, x="sex", hue="event", ax=ax4, palette="Set2")
+        ax4.set_xlabel("Sex")
+        st.pyplot(fig4)
+
+        st.markdown("#### Blood group vs event")
+        fig5, ax5 = plt.subplots(figsize=(5, 3))
+        sns.countplot(data=df, x="abo", hue="event", ax=ax5, palette="Set3")
+        ax5.set_xlabel("Blood group")
+        st.pyplot(fig5)
+
+    except FileNotFoundError:
+        st.warning(
+            "For EDA graphs, please upload **transplant.csv** to the same directory as `app.py` "
+            "in your GitHub repository."
+        )
+
+# -----------------------
+# 3) EDA – Advanced features
+# -----------------------
+elif page == "EDA – Advanced features":
+    st.markdown("### 🧬 Advanced features (synthetic clinical variables)")
     st.caption(
-        "Note: This model is built on historical waitlist data and is intended for study/demo use, "
-        "not for real medical decision‑making."
-    )
+        "These extra features are synthetic but inspired by real liver waitlist risk factors "
+        "like MELD score, sodium, bilirubin, creatinine, albumin, ascites, encephalopathy and center region."
+    )  # [web:311][web:324]
 
-# -----------------------
-# EDA / Graphs section
-# -----------------------
-st.markdown("---")
-st.markdown("### 📊 Explore dataset (EDA)")
+    try:
+        df = load_data()
 
-# CSV ko load karo (app ke same folder se)
-@st.cache_data
-def load_data():
-    # Streamlit app ke folder me transplant.csv rakho
-    df = pd.read_csv("transplant.csv")
-    return df
+        # Ensure expected new columns exist
+        needed_cols = [
+            "age_group", "bmi", "meld_score", "sodium", "bilirubin",
+            "creatinine", "inr", "albumin", "ascites", "encephalopathy",
+            "diabetes", "hypertension", "smoker", "center_region", "is_death"
+        ]
+        available = [c for c in needed_cols if c in df.columns]
 
-try:
-    df = load_data()
-    show_raw = st.checkbox("Show first 10 rows of raw data")
-    if show_raw:
-        st.dataframe(df.head(10))
+        if len(available) == 0:
+            st.error("New synthetic feature columns not found in transplant.csv. Please upload the enriched file.")
+        else:
+            # Filters via buttons / sidebar
+            st.markdown("#### Filters")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                age_group_sel = st.multiselect(
+                    "Age group",
+                    options=sorted(df["age_group"].dropna().unique()),
+                    default=sorted(df["age_group"].dropna().unique())
+                ) if "age_group" in df.columns else []
+            with c2:
+                region_sel = st.multiselect(
+                    "Center region",
+                    options=sorted(df["center_region"].dropna().unique()) if "center_region" in df.columns else [],
+                    default=sorted(df["center_region"].dropna().unique()) if "center_region" in df.columns else []
+                ) if "center_region" in df.columns else []
+            with c3:
+                event_sel = st.multiselect(
+                    "Event type",
+                    options=sorted(df["event"].dropna().unique()),
+                    default=sorted(df["event"].dropna().unique())
+                )
 
-    sns.set(style="whitegrid")
+            # Apply filters
+            df_f = df.copy()
+            if "age_group" in df.columns and age_group_sel:
+                df_f = df_f[df_f["age_group"].isin(age_group_sel)]
+            if "center_region" in df.columns and region_sel:
+                df_f = df_f[df_f["center_region"].isin(region_sel)]
+            if event_sel:
+                df_f = df_f[df_f["event"].isin(event_sel)]
 
-    # 1) Age distribution
-    st.markdown("#### Age distribution")
-    fig1, ax1 = plt.subplots(figsize=(5, 3))
-    sns.histplot(df["age"].dropna(), bins=20, kde=True, ax=ax1, color="#38bdf8")
-    ax1.set_xlabel("Age (years)")
-    st.pyplot(fig1)
+            sns.set(style="whitegrid")
 
-    # 2) Follow‑up time distribution
-    st.markdown("#### Follow-up time (days)")
-    fig2, ax2 = plt.subplots(figsize=(5, 3))
-    sns.histplot(df["futime"], bins=30, kde=True, ax=ax2, color="#22c55e")
-    ax2.set_xlabel("Follow-up time (days)")
-    st.pyplot(fig2)
+            # Button row for quick graphs
+            st.markdown("#### Quick analysis buttons")
+            bcol1, bcol2, bcol3 = st.columns(3)
+            with bcol1:
+                btn_meld = st.button("MELD vs death")
+            with bcol2:
+                btn_bmi = st.button("BMI distribution")
+            with bcol3:
+                btn_region = st.button("Region-wise death rate")
 
-    # 3) Event counts (death / ltx / censored / withdraw)
-    st.markdown("#### Outcome / event counts")
-    fig3, ax3 = plt.subplots(figsize=(5, 3))
-    sns.countplot(data=df, x="event", order=df["event"].value_counts().index, ax=ax3, palette="mako")
-    ax3.set_xlabel("Event")
-    ax3.set_ylabel("Count")
-    st.pyplot(fig3)
+            # Always show a couple of main plots
+            st.markdown("#### MELD score distribution")
+            if "meld_score" in df_f.columns:
+                fig_m, ax_m = plt.subplots(figsize=(5, 3))
+                sns.histplot(df_f["meld_score"], bins=25, kde=True, ax=ax_m, color="#6366f1")
+                ax_m.set_xlabel("MELD score (synthetic)")
+                st.pyplot(fig_m)
 
-    # 4) Sex vs event
-    st.markdown("#### Sex vs event")
-    fig4, ax4 = plt.subplots(figsize=(5, 3))
-    sns.countplot(data=df, x="sex", hue="event", ax=ax4, palette="Set2")
-    ax4.set_xlabel("Sex")
-    st.pyplot(fig4)
+            st.markdown("#### Sodium vs MELD (scatter)")
+            if "sodium" in df_f.columns and "meld_score" in df_f.columns:
+                fig_sc, ax_sc = plt.subplots(figsize=(5, 3))
+                sns.scatterplot(
+                    data=df_f.sample(min(len(df_f), 300), random_state=0),
+                    x="sodium", y="meld_score",
+                    hue="event", alpha=0.8, ax=ax_sc
+                )
+                ax_sc.set_xlabel("Sodium (mmol/L)")
+                ax_sc.set_ylabel("MELD score")
+                st.pyplot(fig_sc)
 
-    # 5) Blood group vs event
-    st.markdown("#### Blood group vs event")
-    fig5, ax5 = plt.subplots(figsize=(5, 3))
-    sns.countplot(data=df, x="abo", hue="event", ax=ax5, palette="Set3")
-    ax5.set_xlabel("Blood group")
-    st.pyplot(fig5)
+            # Button-based extras
+            if btn_meld and "is_death" in df_f.columns and "meld_score" in df_f.columns:
+                st.markdown("#### MELD score by outcome")
+                fig_b, ax_b = plt.subplots(figsize=(5, 3))
+                sns.boxplot(data=df_f, x="event", y="meld_score", ax=ax_b)
+                ax_b.set_xlabel("Event")
+                ax_b.set_ylabel("MELD score")
+                st.pyplot(fig_b)
 
-except FileNotFoundError:
-    st.warning(
-        "For EDA graphs, please upload **transplant.csv** to the same directory as `app.py` "
-        "in your GitHub repository."
-    )
+            if btn_bmi and "bmi" in df_f.columns:
+                st.markdown("#### BMI distribution by event")
+                fig_bmi, ax_bmi = plt.subplots(figsize=(5, 3))
+                sns.kdeplot(data=df_f, x="bmi", hue="event", fill=True, common_norm=False, alpha=0.4, ax=ax_bmi)
+                ax_bmi.set_xlabel("BMI")
+                st.pyplot(fig_bmi)
+
+            if btn_region and "center_region" in df_f.columns and "is_death" in df_f.columns:
+                st.markdown("#### Approx death rate per region")
+                rate = (
+                    df_f.groupby("center_region")["is_death"]
+                    .mean()
+                    .sort_values(ascending=False)
+                    .reset_index()
+                )
+                fig_r, ax_r = plt.subplots(figsize=(5, 3))
+                sns.barplot(data=rate, x="center_region", y="is_death", ax=ax_r, color="#f97316")
+                ax_r.set_ylabel("Death rate")
+                st.pyplot(fig_r)
+
+    except FileNotFoundError:
+        st.warning(
+            "For advanced EDA, please upload the enriched **transplant.csv** (with synthetic features) "
+            "to the same directory as `app.py`."
+        )
