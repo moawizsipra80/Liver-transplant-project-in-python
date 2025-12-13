@@ -12,14 +12,30 @@ from sklearn.metrics import roc_curve, auc, confusion_matrix, classification_rep
 from sklearn.model_selection import train_test_split
 from lifelines import KaplanMeierFitter
 from lifelines.statistics import logrank_test
+import google.generativeai as genai  # Gemini
 
+# -----------------------
+# Gemini config
+# -----------------------
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+else:
+    # sirf warning; app phir bhi chale
+    st.sidebar.warning("GEMINI_API_KEY secret not set; chat page will be disabled.")
+
+# -----------------------
+# Page config
+# -----------------------
 st.set_page_config(
     page_title="TransplantCare – Advanced Waitlist Risk Analyzer",
-    page_icon=" ",
+    page_icon="🩺",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# -----------------------
+# Global styling
+# -----------------------
 st.markdown(
     """
     <style>
@@ -114,6 +130,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# -----------------------
+# Load ML objects
+# -----------------------
 @st.cache_resource
 def load_objects():
     clf = pickle.load(open("clf.pkl", "rb"))
@@ -121,10 +140,14 @@ def load_objects():
     le_sex = pickle.load(open("le_sex.pkl", "rb"))
     le_abo = pickle.load(open("le_abo.pkl", "rb"))
     feature_cols = pickle.load(open("feature_cols.pkl", "rb"))
-    explainer = shap.TreeExplainer(clf)  # [web:345]
+    explainer = shap.TreeExplainer(clf)
     return clf, scaler, le_sex, le_abo, feature_cols, explainer
 
 clf, scaler, le_sex, le_abo, feature_cols, explainer = load_objects()
+
+# -----------------------
+# Load dataset
+# -----------------------
 @st.cache_data
 def load_data():
     df = pd.read_csv("transplant.csv")
@@ -134,6 +157,9 @@ def load_data():
         df["abo"] = df["abo"].astype(str).str.strip().str.upper()
     return df
 
+# -----------------------
+# Population stats
+# -----------------------
 def compute_population_stats(df, clf, scaler, le_sex, le_abo, feature_cols):
     df_prep = df.copy()
     if "sex" in df_prep.columns:
@@ -161,6 +187,40 @@ def compute_population_stats(df, clf, scaler, le_sex, le_abo, feature_cols):
 
     return df_prep, overall_death_rate, death_by_age, death_by_sex, death_by_abo
 
+# -----------------------
+# Gemini helper
+# -----------------------
+def ask_gemini_about_data(question: str, df: pd.DataFrame) -> str:
+    if not question.strip():
+        return "Please type a question first."
+    if "GEMINI_API_KEY" not in st.secrets:
+        return "Gemini API key is not configured in Streamlit secrets."
+
+    df_sample = df.sample(min(len(df), 200), random_state=0)
+    cols = [c for c in df_sample.columns if c not in ["sex_enc", "abo_enc"]]
+    df_sample = df_sample[cols]
+    sample_text = df_sample.to_csv(index=False)[:6000]
+
+    prompt = f"""
+You are a data analyst for a liver transplant waitlist dataset.
+
+Here is a CSV sample from the dataset:
+
+{sample_text}
+
+Answer the user's question using only information consistent with this dataset sample.
+Explain briefly (3-6 sentences) in simple language.
+
+User question: {question}
+"""
+
+    model = genai.GenerativeModel("gemini-1.5-pro")
+    resp = model.generate_content(prompt)
+    return resp.text.strip()
+
+# -----------------------
+# Header
+# -----------------------
 st.markdown(
     """
     <div class="main-header">
@@ -187,7 +247,10 @@ st.markdown(
 
 st.markdown("---")
 
-st.sidebar.title(" Navigation")
+# -----------------------
+# Sidebar
+# -----------------------
+st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Select Section",
     [
@@ -196,6 +259,7 @@ page = st.sidebar.radio(
         " EDA – Advanced Clinical Features",
         " Model Performance & Explanations",
         " Survival Analysis",
+        " Chat with Dataset",
     ],
 )
 
@@ -276,8 +340,8 @@ if page == " Risk Prediction & Insights":
         # -------- SHAP BLOCK (fully flattened) --------
         shap_raw = explainer.shap_values(row_scaled)
         shap_arr = np.array(shap_raw[-1]) if isinstance(shap_raw, list) else np.array(shap_raw)
-        shap_flat = shap_arr.reshape(-1)          # flatten to 1D [web:346]
-        shap_vec = shap_flat[: len(feature_cols)] # match feature count
+        shap_flat = shap_arr.reshape(-1)
+        shap_vec = shap_flat[: len(feature_cols)]
         shap_df = pd.DataFrame(
             {
                 "feature": feature_cols,
@@ -296,7 +360,7 @@ if page == " Risk Prediction & Insights":
         with m2:
             st.metric("Adjusted Risk", f"{adjusted_proba*100:.1f}%")
         with m3:
-            label = "HIGH RISK " if pred == 1 else "LOW RISK "
+            label = "HIGH RISK" if pred == 1 else "LOW RISK"
             st.metric("Predicted Outcome", label)
         with m4:
             st.metric(
@@ -307,14 +371,11 @@ if page == " Risk Prediction & Insights":
 
         if adjusted_proba < 0.15:
             txt = "Low risk: Monitor routinely."
-            icon = ""
         elif adjusted_proba < 0.35:
             txt = "Moderate risk: Consider expedited evaluation."
-            icon = ""
         else:
             txt = "High risk: Urgent intervention recommended."
-            icon = ""
-        st.markdown(f"**{icon} Interpretation:** {txt}")
+        st.markdown(f"**Interpretation:** {txt}")
 
         st.markdown("###  Your Risk vs Population")
         c1, c2 = st.columns(2)
@@ -369,4 +430,414 @@ if page == " Risk Prediction & Insights":
         st.dataframe(clinical_df, use_container_width=True)
         st.caption("*Adjustments are heuristic for demo; real models would integrate all features.*")
 
+# =====================================================
+# 2) EDA – Basic Distributions
+# =====================================================
+elif page == " EDA – Basic Distributions":
+    st.markdown("### 📊 Interactive Dataset Exploration (Basic)")
+    try:
+        df = load_data()
+        if st.checkbox("Show first 20 rows"):
+            st.dataframe(df.head(20), use_container_width=True)
 
+        tab1, tab2 = st.tabs(["Demographics", "Outcomes"])
+        with tab1:
+            a, b = st.columns(2)
+            with a:
+                fig_age = px.histogram(
+                    df,
+                    x="age",
+                    nbins=20,
+                    marginal="rug",
+                    title="Age Distribution",
+                    color_discrete_sequence=["#38bdf8"],
+                )
+                fig_age.update_layout(height=400)
+                st.plotly_chart(fig_age, use_container_width=True)
+            with b:
+                fig_ft = px.histogram(
+                    df,
+                    x="futime",
+                    nbins=30,
+                    marginal="box",
+                    title="Follow-up Time Distribution",
+                    color_discrete_sequence=["#22c55e"],
+                )
+                fig_ft.update_layout(height=400)
+                st.plotly_chart(fig_ft, use_container_width=True)
+
+        with tab2:
+            c, d = st.columns(2)
+            with c:
+                fig_sex = px.histogram(
+                    df,
+                    x="sex",
+                    color="event",
+                    title="Sex vs Event Outcomes",
+                    barmode="group",
+                    color_discrete_map={
+                        "death": "#ef4444",
+                        "ltx": "#10b981",
+                        "censored": "#f59e0b",
+                        "withdraw": "#8b5cf6",
+                    },
+                )
+                st.plotly_chart(fig_sex, use_container_width=True)
+            with d:
+                fig_abo = px.histogram(
+                    df,
+                    x="abo",
+                    color="event",
+                    title="Blood Group vs Event Outcomes",
+                    barmode="group",
+                    color_discrete_map={
+                        "death": "#ef4444",
+                        "ltx": "#10b981",
+                        "censored": "#f59e0b",
+                        "withdraw": "#8b5cf6",
+                    },
+                )
+                st.plotly_chart(fig_abo, use_container_width=True)
+
+        st.markdown("### 🔗 Correlation Heatmap (Numeric Features)")
+        num_cols = df.select_dtypes(include=[np.number]).columns
+        fig_corr = px.imshow(
+            df[num_cols].corr(),
+            title="Feature Correlations",
+            aspect="auto",
+            color_continuous_scale="RdBu_r",
+        )
+        st.plotly_chart(fig_corr, use_container_width=True)
+
+    except FileNotFoundError:
+        st.warning("Upload transplant.csv to view EDA.")
+
+# =====================================================
+# 3) EDA – Advanced Clinical Features
+# =====================================================
+elif page == " EDA – Advanced Clinical Features":
+    st.markdown("### 🧬 Deep Dive: Synthetic Clinical Risk Factors")
+    try:
+        df = load_data()
+        needed_cols = [
+            "age_group",
+            "bmi",
+            "meld_score",
+            "sodium",
+            "bilirubin",
+            "creatinine",
+            "inr",
+            "albumin",
+            "ascites",
+            "encephalopathy",
+            "diabetes",
+            "hypertension",
+            "smoker",
+            "center_region",
+            "is_death",
+        ]
+        available = [c for c in needed_cols if c in df.columns]
+        if len(available) < len(needed_cols) * 0.5:
+            st.error("Enriched CSV with synthetic features required.")
+        else:
+            st.markdown("#### 🔍 Dynamic Filters")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                age_group_sel = st.multiselect(
+                    "Age Group",
+                    sorted(df["age_group"].dropna().unique()),
+                    default=sorted(df["age_group"].dropna().unique()),
+                )
+            with c2:
+                region_sel = st.multiselect(
+                    "Center Region",
+                    sorted(df["center_region"].dropna().unique()),
+                    default=sorted(df["center_region"].dropna().unique()),
+                )
+            with c3:
+                event_sel = st.multiselect(
+                    "Event Type",
+                    sorted(df["event"].dropna().unique()),
+                    default=sorted(df["event"].dropna().unique()),
+                )
+            with c4:
+                death_only = st.checkbox("Filter to Death Cases Only")
+
+            df_f = df.copy()
+            if age_group_sel:
+                df_f = df_f[df_f["age_group"].isin(age_group_sel)]
+            if region_sel:
+                df_f = df_f[df_f["center_region"].isin(region_sel)]
+            if event_sel:
+                df_f = df_f[df_f["event"].isin(event_sel)]
+            if death_only:
+                df_f = df_f[df_f["is_death"] == 1]
+
+            st.markdown("#### 🚀 One-Click Analyses")
+            b1, b2, b3, b4 = st.columns(4)
+            with b1:
+                btn_meld = st.button("📊 MELD vs Outcomes")
+            with b2:
+                btn_bmi = st.button("📈 BMI & Comorbidities")
+            with b3:
+                btn_region = st.button("🌍 Regional Variations")
+            with b4:
+                btn_labs = st.button("🧪 Lab Correlations")
+
+            a, b = st.columns(2)
+            with a:
+                if "meld_score" in df_f.columns:
+                    fig_meld = px.histogram(
+                        df_f,
+                        x="meld_score",
+                        color="is_death",
+                        title="MELD Score Distribution by Death Risk",
+                        nbins=25,
+                        marginal="violin",
+                        color_discrete_map={0: "#10b981", 1: "#ef4444"},
+                    )
+                    st.plotly_chart(fig_meld, use_container_width=True)
+            with b:
+                if "sodium" in df_f.columns and "meld_score" in df_f.columns:
+                    fig_scatter = px.scatter(
+                        df_f.sample(min(len(df_f), 500)),
+                        x="sodium",
+                        y="meld_score",
+                        color="event",
+                        title="Sodium vs MELD (Colored by Event)",
+                        hover_data=["age", "sex"],
+                    )
+                    st.plotly_chart(fig_scatter, use_container_width=True)
+
+            if btn_meld:
+                fig_box = px.box(
+                    df_f,
+                    x="event",
+                    y="meld_score",
+                    title="MELD by Event Type",
+                    color="event",
+                )
+                st.plotly_chart(fig_box, use_container_width=True)
+
+            if btn_bmi:
+                fig_bmi = px.density_contour(
+                    df_f,
+                    x="bmi",
+                    y="age",
+                    color="event",
+                    title="BMI Density by Age & Event",
+                )
+                st.plotly_chart(fig_bmi, use_container_width=True)
+
+            if btn_region and "center_region" in df_f.columns:
+                rate = df_f.groupby("center_region")["is_death"].mean().reset_index()
+                fig_region = px.bar(
+                    rate,
+                    x="center_region",
+                    y="is_death",
+                    title="Death Rate by Region",
+                    color="is_death",
+                    color_continuous_scale="Reds",
+                )
+                st.plotly_chart(fig_region, use_container_width=True)
+
+            if btn_labs:
+                lab_cols = ["bilirubin", "creatinine", "inr", "albumin"]
+                labs = [c for c in lab_cols if c in df_f.columns]
+                if labs:
+                    fig_labs = px.imshow(
+                        df_f[labs + ["is_death"]].corr(),
+                        title="Lab Correlations with Death Risk",
+                        color_continuous_scale="RdBu_r",
+                    )
+                    st.plotly_chart(fig_labs, use_container_width=True)
+
+            st.markdown("### 🤰 Comorbidity Overview")
+            if all(c in df_f.columns for c in ["diabetes", "hypertension", "smoker", "ascites"]):
+                comm_df = (
+                    df_f[["diabetes", "hypertension", "smoker", "ascites"]]
+                    .sum()
+                    .reset_index()
+                )
+                comm_df.columns = ["Condition", "Count"]
+                fig_pie = px.pie(
+                    comm_df,
+                    values="Count",
+                    names="Condition",
+                    title="Prevalence of Key Comorbidities",
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Error loading data: {e}. Ensure enriched CSV is uploaded.")
+
+# =====================================================
+# 4) Model Performance & Explanations
+# =====================================================
+elif page == " Model Performance & Explanations":
+    st.markdown("### 🤖 Random Forest Model Deep Dive")
+    try:
+        df = load_data()
+        df_prep, _, _, _, _ = compute_population_stats(df, clf, scaler, le_sex, le_abo, feature_cols)
+        X = df_prep[feature_cols]
+        y = (
+            df_prep["is_death"]
+            if "is_death" in df_prep.columns
+            else (df_prep["event"] == "death").astype(int)
+        )
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+        X_test_scaled = scaler.transform(X_test)
+        y_pred = clf.predict(X_test_scaled)
+        y_proba = clf.predict_proba(X_test_scaled)[:, 1]
+
+        cm = confusion_matrix(y_test, y_pred)
+        fpr, tpr, _ = roc_curve(y_test, y_proba)
+        roc_auc = auc(fpr, tpr)
+
+        t1, t2 = st.tabs(["Metrics", "Visualizations"])
+        with t1:
+            st.markdown("#### 📊 Key Performance Metrics")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.metric("Accuracy", f"{(y_pred == y_test).mean():.2%}")
+            rep = classification_report(y_test, y_pred, output_dict=True)
+            with c2:
+                st.metric("Precision (Death)", f"{rep['1']['precision']:.2%}")
+            with c3:
+                st.metric("Recall (Death)", f"{rep['1']['recall']:.2%}")
+            with c4:
+                st.metric("AUC-ROC", f"{roc_auc:.3f}")
+            st.text(classification_report(y_test, y_pred))
+
+        with t2:
+            fig_cm = px.imshow(
+                cm,
+                text_auto=True,
+                aspect="auto",
+                title="Confusion Matrix",
+                labels=dict(x="Predicted", y="Actual", color="Count"),
+                color_continuous_scale="Blues",
+            )
+            st.plotly_chart(fig_cm, use_container_width=True)
+
+            fig_roc = px.area(
+                x=fpr,
+                y=tpr,
+                title=f"ROC Curve (AUC = {roc_auc:.3f})",
+                labels=dict(x="False Positive Rate", y="True Positive Rate"),
+            )
+            fig_roc.add_shape(
+                type="line", line=dict(dash="dash"), x0=0, x1=1, y0=0, y1=1
+            )
+            st.plotly_chart(fig_roc, use_container_width=True)
+
+            importance = pd.DataFrame(
+                {"feature": feature_cols, "importance": clf.feature_importances_}
+            ).sort_values("importance", ascending=False)
+            fig_imp = px.bar(
+                importance,
+                x="importance",
+                y="feature",
+                orientation="h",
+                title="Feature Importance",
+                color="importance",
+                color_continuous_scale="Viridis",
+            )
+            st.plotly_chart(fig_imp, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Error evaluating model: {e}")
+
+# =====================================================
+# 5) Survival Analysis
+# =====================================================
+elif page == " Survival Analysis":
+    st.markdown("### 📉 Time-to-Event Analysis")
+    try:
+        df = load_data()
+        if "futime" not in df.columns or "event" not in df.columns:
+            st.error("Dataset missing futime or event columns.")
+        else:
+            df["surv_event"] = (df["event"] == "death").astype(int)
+            stratify_by = st.selectbox(
+                "Stratify KM by", ["None", "sex", "abo", "age_group", "center_region"]
+            )
+            kmf = KaplanMeierFitter()
+            plt.figure(figsize=(6, 4))
+
+            if stratify_by == "None":
+                kmf.fit(df["futime"], event_observed=df["surv_event"])
+                kmf.plot_survival_function()
+                plt.title("Overall Waitlist Survival")
+            else:
+                groups = df[stratify_by].dropna().unique()
+                colors = px.colors.qualitative.Set1
+                for i, g in enumerate(groups):
+                    mask = df[stratify_by] == g
+                    kmf.fit(
+                        df.loc[mask, "futime"],
+                        event_observed=df.loc[mask, "surv_event"],
+                        label=str(g),
+                    )
+                    kmf.plot_survival_function(color=colors[i % len(colors)])
+                plt.title(f"Survival by {stratify_by.capitalize()}")
+
+            plt.ylabel("Survival Probability")
+            plt.xlabel("Time (Days)")
+            st.pyplot(plt.gcf())
+
+            if stratify_by != "None":
+                groups = df[stratify_by].dropna().unique()
+                if len(groups) >= 2:
+                    res = logrank_test(
+                        df[df[stratify_by] == groups[0]]["futime"],
+                        df[df[stratify_by] == groups[1]]["futime"],
+                        event_observed_A=df[df[stratify_by] == groups[0]]["surv_event"],
+                        event_observed_B=df[df[stratify_by] == groups[1]]["surv_event"],
+                    )
+                    st.markdown(
+                        f"**Log-Rank Test p-value:** {res.p_value:.4f} "
+                        f"({'Significant' if res.p_value < 0.05 else 'Not Significant'})"
+                    )
+
+    except Exception as e:
+        st.error(f"Error in survival analysis: {e}")
+
+# =====================================================
+# 6) Chat with Dataset (Gemini)
+# =====================================================
+elif page == " Chat with Dataset":
+    st.markdown("### 🤖 Ask questions about this dataset/model")
+    st.write(
+        "Type natural-language questions about the waitlist data or model behaviour. "
+        "The Gemini assistant will use a sample of the dataset to answer."
+    )
+
+    df = load_data()
+    user_q = st.text_area(
+        "Your question",
+        value="How does death risk differ between males and females in this dataset?",
+        height=80,
+    )
+
+    if st.button("Ask Gemini", use_container_width=True):
+        with st.spinner("Analyzing dataset and generating answer..."):
+            answer = ask_gemini_about_data(user_q, df)
+        st.markdown("#### Answer")
+        st.write(answer)
+
+    st.caption(
+        "Note: The assistant only sees a sampled subset of the dataset for privacy and performance, "
+        "so answers are approximate and for educational use."
+    )
+
+# Footer
+st.markdown("---")
+st.markdown(
+    "<div style='text-align: center; color: #94a3b8; font-size: 0.8rem;'>"
+    "© 2025 TransplantCare Demo | Educational Purposes Only"
+    "</div>",
+    unsafe_allow_html=True,
+)
