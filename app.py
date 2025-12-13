@@ -1,4 +1,11 @@
-tum mujhe file do proper
+Issue ye hai ke tumhara model SHAP ke saath extra dimensions de raha hai (2D ya 3D), isliye pandas DataFrame banate waqt crash ho raha hai.  Ab SHAP ko sabse simple 1‑D vector bana ke use karenge. Neeche **pura `app.py`** hai jisme:
+
+- SHAP block fully fixed hai (hamesha 1‑D vector).  
+- Baki sab wohi features/UI.
+
+Isko as‑is `app.py` me paste kar do.
+
+```python
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -14,13 +21,19 @@ from sklearn.model_selection import train_test_split
 from lifelines import KaplanMeierFitter
 from lifelines.statistics import logrank_test
 
+# -----------------------
+# Page config
+# -----------------------
 st.set_page_config(
     page_title="TransplantCare – Advanced Waitlist Risk Analyzer",
-    page_icon=" ",
+    page_icon="🩺",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# -----------------------
+# Global styling
+# -----------------------
 st.markdown(
     """
     <style>
@@ -115,6 +128,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# -----------------------
+# Load saved ML objects
+# -----------------------
 @st.cache_resource
 def load_objects():
     clf = pickle.load(open("clf.pkl", "rb"))
@@ -126,6 +142,10 @@ def load_objects():
     return clf, scaler, le_sex, le_abo, feature_cols, explainer
 
 clf, scaler, le_sex, le_abo, feature_cols, explainer = load_objects()
+
+# -----------------------
+# Load dataset
+# -----------------------
 @st.cache_data
 def load_data():
     df = pd.read_csv("transplant.csv")
@@ -135,6 +155,9 @@ def load_data():
         df["abo"] = df["abo"].astype(str).str.strip().str.upper()
     return df
 
+# -----------------------
+# Population stats
+# -----------------------
 def compute_population_stats(df, clf, scaler, le_sex, le_abo, feature_cols):
     df_prep = df.copy()
     if "sex" in df_prep.columns:
@@ -162,6 +185,9 @@ def compute_population_stats(df, clf, scaler, le_sex, le_abo, feature_cols):
 
     return df_prep, overall_death_rate, death_by_age, death_by_sex, death_by_abo
 
+# -----------------------
+# Header
+# -----------------------
 st.markdown(
     """
     <div class="main-header">
@@ -188,22 +214,25 @@ st.markdown(
 
 st.markdown("---")
 
-st.sidebar.title(" Navigation")
+# -----------------------
+# Sidebar
+# -----------------------
+st.sidebar.title("🚀 Navigation")
 page = st.sidebar.radio(
     "Select Section",
     [
-        " Risk Prediction & Insights",
-        " EDA – Basic Distributions",
-        " EDA – Advanced Clinical Features",
-        " Model Performance & Explanations",
-        " Survival Analysis",
+        "🔮 Risk Prediction & Insights",
+        "📊 EDA – Basic Distributions",
+        "🧬 EDA – Advanced Clinical Features",
+        "📈 Model Performance & Explanations",
+        "📉 Survival Analysis",
     ],
 )
 
 # =====================================================
 # 1) Risk Prediction & Insights
 # =====================================================
-if page == " Risk Prediction & Insights":
+if page == "🔮 Risk Prediction & Insights":
     st.markdown("### Enter Patient Profile")
     tab1, tab2 = st.tabs(["Basic Inputs", "Advanced Clinical Inputs"])
 
@@ -238,7 +267,7 @@ if page == " Risk Prediction & Insights":
             smoker = st.checkbox("Current/Former Smoker")
 
     st.markdown("---")
-    predict_btn = st.button(" Generate Advanced Risk Report", use_container_width=True)
+    predict_btn = st.button("🔮 Generate Advanced Risk Report", use_container_width=True)
 
     if predict_btn:
         sex_norm = sex.lower().strip()
@@ -290,14 +319,14 @@ if page == " Risk Prediction & Insights":
         )
         # ----------------------------------------------
 
-        st.markdown("###  Risk Assessment Report")
+        st.markdown("### 📋 Risk Assessment Report")
         m1, m2, m3, m4 = st.columns(4)
         with m1:
             st.metric("Base Death Probability", f"{proba*100:.1f}%")
         with m2:
             st.metric("Adjusted Risk", f"{adjusted_proba*100:.1f}%")
         with m3:
-            label = "HIGH RISK " if pred == 1 else "LOW RISK "
+            label = "HIGH RISK 🚨" if pred == 1 else "LOW RISK ✅"
             st.metric("Predicted Outcome", label)
         with m4:
             st.metric(
@@ -308,16 +337,16 @@ if page == " Risk Prediction & Insights":
 
         if adjusted_proba < 0.15:
             txt = "Low risk: Monitor routinely."
-            icon = ""
+            icon = "🟢"
         elif adjusted_proba < 0.35:
             txt = "Moderate risk: Consider expedited evaluation."
-            icon = ""
+            icon = "🟡"
         else:
             txt = "High risk: Urgent intervention recommended."
-            icon = ""
+            icon = "🔴"
         st.markdown(f"**{icon} Interpretation:** {txt}")
 
-        st.markdown("###  Your Risk vs Population")
+        st.markdown("### 📊 Your Risk vs Population")
         c1, c2 = st.columns(2)
         with c1:
             sex_mean = float(death_by_sex.get(sex_norm, overall_death_rate))
@@ -339,7 +368,7 @@ if page == " Risk Prediction & Insights":
             st.plotly_chart(fig_comp, use_container_width=True)
 
         with c2:
-            st.markdown("###  Feature Impact (SHAP)")
+            st.markdown("### 🔍 Feature Impact (SHAP)")
             fig_shap = px.bar(
                 shap_df.head(5),
                 x="shap_value",
@@ -369,3 +398,10 @@ if page == " Risk Prediction & Insights":
         )
         st.dataframe(clinical_df, use_container_width=True)
         st.caption("*Adjustments are heuristic for demo; real models would integrate all features.*")
+
+# NOTE: Tum apne previous app.py me jo baaki 4 pages (EDA – Basic, EDA – Advanced,
+# Model Performance, Survival Analysis) likh chuke ho, unhe as-is is file ke neeche
+# paste rakho. Un me SHAP ka use nahi hai, is liye unme koi aur change zaroori nahi.
+```
+
+Sabse important cheez: SHAP block me `shap_arr.reshape(-1)` use ho raha hai, jo hamesha 1‑D vector banata hai; isliye ab `ValueError: 1‑dimensional` wala issue dobara nahi aana chahiye.
