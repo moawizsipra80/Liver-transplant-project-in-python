@@ -15,23 +15,26 @@ st.set_page_config(
 )
 
 # -----------------------
-# Global styling (white background + clear text + strong buttons)
+# Global styling
 # -----------------------
 st.markdown(
     """
     <style>
+    /* App background + font */
     .stApp {
-        background-color: #ffffff;  /* pure white */
+        background-color: #ffffff;
         font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     }
+    /* Center main content and remove extra top spacing */
     .block-container {
-        padding-top: 1rem;
+        padding-top: 0.5rem;
         padding-bottom: 2rem;
         max-width: 1100px;
         margin: 0 auto;
     }
+    /* Titles and text */
     h1, h2, h3, h4 {
-        color: #111827;  /* very dark gray */
+        color: #111827;
         font-weight: 700;
     }
     p, label, span, .stMarkdown, .stText, .stCaption, .stDataFrame, .stMetric {
@@ -63,10 +66,10 @@ st.markdown(
         background-color: #115e59;
         border: none;
     }
-    /* Checkboxes, multiselect labels */
-    .stCheckbox > label, .stMultiSelect > label {
-        font-weight: 600;
-        color: #111827 !important;
+    /* Inputs (dark boxes) */
+    .stNumberInput > div > div > input,
+    .stSelectbox > div > div > div {
+        color: #f9fafb !important;
     }
     .stMarkdown h4, .stMarkdown h3 {
         margin-top: 0.75rem;
@@ -102,7 +105,7 @@ def load_data():
 # -----------------------
 # Header + layout
 # -----------------------
-st.markdown("## TransplantCare – Waitlist Death Risk")
+st.markdown("# TransplantCare – Waitlist Death Risk")
 st.caption(
     "Interactive tool using a Random Forest model trained on liver transplant waitlist data "
     "to estimate death risk for educational purposes only. "
@@ -111,7 +114,9 @@ st.caption(
 
 st.markdown("---")
 
+# -----------------------
 # Sidebar navigation
+# -----------------------
 st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Go to",
@@ -130,10 +135,13 @@ if page == "Risk Prediction":
         age = st.number_input("Age (years)", min_value=1, max_value=100, value=50)
         year = st.number_input("Listing year", min_value=1985, max_value=2025, value=1995)
         futime = st.number_input("Follow-up time (days)", min_value=0, max_value=2000, value=200)
+        # extra user feature (not in model, sirf display ke liye)
+        meld_self = st.slider("Optional: MELD-like score (for display only)", 6, 40, 20)
 
     with col2:
         sex = st.selectbox("Sex", ['m', 'f'])
         abo = st.selectbox("Blood group", ['A', 'B', 'AB', 'O'])
+        bmi = st.slider("Optional: BMI (for display only)", 15.0, 45.0, 25.0)
 
     st.markdown("")
     predict_btn = st.button("🔮 Predict death risk")
@@ -155,20 +163,31 @@ if page == "Risk Prediction":
         row_scaled = scaler.transform(row[feature_cols])
 
         pred = clf.predict(row_scaled)[0]
-        proba = clf.predict_proba(row_scaled)[0][1]
+        proba = float(clf.predict_proba(row_scaled)[0][1])
 
         st.markdown("---")
         st.markdown("### Result")
 
-        mcol1, mcol2 = st.columns(2)
+        mcol1, mcol2, mcol3 = st.columns(3)
         with mcol1:
-            st.metric("Estimated death probability", f"{proba:.1%}")
+            st.metric("Estimated death probability", f"{proba*100:.1f}%")
         with mcol2:
             label = "HIGH RISK (death)" if pred == 1 else "LOW RISK (no death)"
             if pred == 1:
                 st.error(label)
             else:
                 st.success(label)
+        with mcol3:
+            st.metric("You entered MELD-like", meld_self)
+
+        # Simple interpretation text
+        if proba < 0.15:
+            risk_text = "Model predicts a relatively low short-term death risk."
+        elif proba < 0.35:
+            risk_text = "Model predicts a moderate short-term death risk."
+        else:
+            risk_text = "Model predicts a high short-term death risk."
+        st.write(risk_text)
 
         st.caption(
             "Note: This model is built on historical waitlist data and is intended for study/demo use, "
@@ -183,23 +202,44 @@ elif page == "EDA – Basic":
 
     try:
         df = load_data()
-        show_raw = st.checkbox("Show first 10 rows of raw data")
+        st.write(
+            "Basic overview of original waitlist variables: age, follow-up time, event type, "
+            "sex and blood group."
+        )
+
+        show_raw = st.checkbox("Show first 15 rows of raw data")
         if show_raw:
-            st.dataframe(df.head(10))
+            st.dataframe(df.head(15))
 
         sns.set(style="whitegrid")
 
-        st.markdown("#### Age distribution")
-        fig1, ax1 = plt.subplots(figsize=(5, 3))
-        sns.histplot(df["age"].dropna(), bins=20, kde=True, ax=ax1, color="#38bdf8")
-        ax1.set_xlabel("Age (years)")
-        st.pyplot(fig1)
+        col_a, col_b = st.columns(2)
 
-        st.markdown("#### Follow-up time (days)")
-        fig2, ax2 = plt.subplots(figsize=(5, 3))
-        sns.histplot(df["futime"], bins=30, kde=True, ax=ax2, color="#22c55e")
-        ax2.set_xlabel("Follow-up time (days)")
-        st.pyplot(fig2)
+        with col_a:
+            st.markdown("#### Age distribution")
+            fig1, ax1 = plt.subplots(figsize=(5, 3))
+            sns.histplot(df["age"].dropna(), bins=20, kde=True, ax=ax1, color="#38bdf8")
+            ax1.set_xlabel("Age (years)")
+            st.pyplot(fig1)
+
+            st.markdown("#### Sex vs event")
+            fig4, ax4 = plt.subplots(figsize=(5, 3))
+            sns.countplot(data=df, x="sex", hue="event", ax=ax4, palette="Set2")
+            ax4.set_xlabel("Sex")
+            st.pyplot(fig4)
+
+        with col_b:
+            st.markdown("#### Follow-up time (days)")
+            fig2, ax2 = plt.subplots(figsize=(5, 3))
+            sns.histplot(df["futime"], bins=30, kde=True, ax=ax2, color="#22c55e")
+            ax2.set_xlabel("Follow-up time (days)")
+            st.pyplot(fig2)
+
+            st.markdown("#### Blood group vs event")
+            fig5, ax5 = plt.subplots(figsize=(5, 3))
+            sns.countplot(data=df, x="abo", hue="event", ax=ax5, palette="Set3")
+            ax5.set_xlabel("Blood group")
+            st.pyplot(fig5)
 
         st.markdown("#### Outcome / event counts")
         fig3, ax3 = plt.subplots(figsize=(5, 3))
@@ -207,18 +247,6 @@ elif page == "EDA – Basic":
         ax3.set_xlabel("Event")
         ax3.set_ylabel("Count")
         st.pyplot(fig3)
-
-        st.markdown("#### Sex vs event")
-        fig4, ax4 = plt.subplots(figsize=(5, 3))
-        sns.countplot(data=df, x="sex", hue="event", ax=ax4, palette="Set2")
-        ax4.set_xlabel("Sex")
-        st.pyplot(fig4)
-
-        st.markdown("#### Blood group vs event")
-        fig5, ax5 = plt.subplots(figsize=(5, 3))
-        sns.countplot(data=df, x="abo", hue="event", ax=ax5, palette="Set3")
-        ax5.set_xlabel("Blood group")
-        st.pyplot(fig5)
 
     except FileNotFoundError:
         st.warning(
@@ -249,7 +277,6 @@ elif page == "EDA – Advanced features":
         if len(available) == 0:
             st.error("New synthetic feature columns not found in transplant.csv. Please upload the enriched file.")
         else:
-            # Filters
             st.markdown("#### Filters")
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -281,7 +308,6 @@ elif page == "EDA – Advanced features":
 
             sns.set(style="whitegrid")
 
-            # Quick buttons
             st.markdown("#### Quick analysis buttons")
             bcol1, bcol2, bcol3 = st.columns(3)
             with bcol1:
@@ -291,7 +317,6 @@ elif page == "EDA – Advanced features":
             with bcol3:
                 btn_region = st.button("Region-wise death rate")
 
-            # Main plots
             st.markdown("#### MELD score distribution")
             if "meld_score" in df_f.columns:
                 fig_m, ax_m = plt.subplots(figsize=(5, 3))
