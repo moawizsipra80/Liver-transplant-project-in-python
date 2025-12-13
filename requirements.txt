@@ -7,3 +7,5 @@ seaborn
 plotly
 shap
 lifelines
+google-generativeai
+
