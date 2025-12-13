@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # -----------------------
-# Page config + basic light theme
+# Page config
 # -----------------------
 st.set_page_config(
     page_title="TransplantCare – Waitlist Risk",
@@ -14,38 +14,71 @@ st.set_page_config(
     layout="wide"
 )
 
-# Light background + clean font + nicer buttons
+# -----------------------
+# Global styling (white background + clear text + strong buttons)
+# -----------------------
 st.markdown(
     """
     <style>
     .stApp {
-        background-color: #f8fafc;  /* light slate / white-ish */
-        font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background-color: #ffffff;  /* pure white */
+        font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     }
     .block-container {
-        padding-top: 1.5rem;
+        padding-top: 1rem;
         padding-bottom: 2rem;
+        max-width: 1100px;
+        margin: 0 auto;
     }
     h1, h2, h3, h4 {
-        color: #0f172a;
+        color: #111827;  /* very dark gray */
+        font-weight: 700;
     }
+    p, label, span, .stMarkdown, .stText, .stCaption, .stDataFrame, .stMetric {
+        color: #111827 !important;
+        font-size: 0.95rem;
+    }
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: #f3f4f6;
+    }
+    section[data-testid="stSidebar"] * {
+        color: #111827 !important;
+        font-size: 0.95rem;
+    }
+    .stRadio > label {
+        font-weight: 600;
+    }
+    /* Buttons */
     .stButton > button {
         background-color: #0f766e;
-        color: white;
+        color: #ffffff;
         border-radius: 999px;
-        padding: 0.4rem 1.2rem;
+        padding: 0.5rem 1.4rem;
         border: none;
+        font-weight: 600;
+        font-size: 0.95rem;
     }
     .stButton > button:hover {
         background-color: #115e59;
+        border: none;
+    }
+    /* Checkboxes, multiselect labels */
+    .stCheckbox > label, .stMultiSelect > label {
+        font-weight: 600;
+        color: #111827 !important;
+    }
+    .stMarkdown h4, .stMarkdown h3 {
+        margin-top: 0.75rem;
+        margin-bottom: 0.25rem;
     }
     </style>
     """,
     unsafe_allow_html=True,
-)  # [web:270]
+)  # [web:336][web:333][web:340]
 
 # -----------------------
-# Load saved objects
+# Load saved ML objects
 # -----------------------
 @st.cache_resource
 def load_objects():
@@ -106,9 +139,11 @@ if page == "Risk Prediction":
     predict_btn = st.button("🔮 Predict death risk")
 
     if predict_btn:
+        # encode
         sex_enc = le_sex.transform([sex])[0]
         abo_enc = le_abo.transform([abo])[0]
 
+        # row same order as training
         row = pd.DataFrame([{
             'age': age,
             'year': year,
@@ -204,7 +239,6 @@ elif page == "EDA – Advanced features":
     try:
         df = load_data()
 
-        # Ensure expected new columns exist
         needed_cols = [
             "age_group", "bmi", "meld_score", "sodium", "bilirubin",
             "creatinine", "inr", "albumin", "ascites", "encephalopathy",
@@ -215,7 +249,7 @@ elif page == "EDA – Advanced features":
         if len(available) == 0:
             st.error("New synthetic feature columns not found in transplant.csv. Please upload the enriched file.")
         else:
-            # Filters via buttons / sidebar
+            # Filters
             st.markdown("#### Filters")
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -237,7 +271,6 @@ elif page == "EDA – Advanced features":
                     default=sorted(df["event"].dropna().unique())
                 )
 
-            # Apply filters
             df_f = df.copy()
             if "age_group" in df.columns and age_group_sel:
                 df_f = df_f[df_f["age_group"].isin(age_group_sel)]
@@ -248,7 +281,7 @@ elif page == "EDA – Advanced features":
 
             sns.set(style="whitegrid")
 
-            # Button row for quick graphs
+            # Quick buttons
             st.markdown("#### Quick analysis buttons")
             bcol1, bcol2, bcol3 = st.columns(3)
             with bcol1:
@@ -258,7 +291,7 @@ elif page == "EDA – Advanced features":
             with bcol3:
                 btn_region = st.button("Region-wise death rate")
 
-            # Always show a couple of main plots
+            # Main plots
             st.markdown("#### MELD score distribution")
             if "meld_score" in df_f.columns:
                 fig_m, ax_m = plt.subplots(figsize=(5, 3))
@@ -278,7 +311,6 @@ elif page == "EDA – Advanced features":
                 ax_sc.set_ylabel("MELD score")
                 st.pyplot(fig_sc)
 
-            # Button-based extras
             if btn_meld and "is_death" in df_f.columns and "meld_score" in df_f.columns:
                 st.markdown("#### MELD score by outcome")
                 fig_b, ax_b = plt.subplots(figsize=(5, 3))
@@ -290,7 +322,10 @@ elif page == "EDA – Advanced features":
             if btn_bmi and "bmi" in df_f.columns:
                 st.markdown("#### BMI distribution by event")
                 fig_bmi, ax_bmi = plt.subplots(figsize=(5, 3))
-                sns.kdeplot(data=df_f, x="bmi", hue="event", fill=True, common_norm=False, alpha=0.4, ax=ax_bmi)
+                sns.kdeplot(
+                    data=df_f, x="bmi", hue="event",
+                    fill=True, common_norm=False, alpha=0.4, ax=ax_bmi
+                )
                 ax_bmi.set_xlabel("BMI")
                 st.pyplot(fig_bmi)
 
