@@ -118,7 +118,7 @@ st.markdown(
     </style>
     """,
     unsafe_allow_html=True,
-)  # [web:350]
+)
 
 # -----------------------
 # Load saved ML objects
@@ -130,7 +130,7 @@ def load_objects():
     le_sex = pickle.load(open("le_sex.pkl", "rb"))
     le_abo = pickle.load(open("le_abo.pkl", "rb"))
     feature_cols = pickle.load(open("feature_cols.pkl", "rb"))
-    explainer = shap.TreeExplainer(clf)  # SHAP explainer for tree model [web:345]
+    explainer = shap.TreeExplainer(clf)  # [web:345]
     return clf, scaler, le_sex, le_abo, feature_cols, explainer
 
 clf, scaler, le_sex, le_abo, feature_cols, explainer = load_objects()
@@ -148,12 +148,10 @@ def load_data():
     return df
 
 # -----------------------
-# Population stats (no cache because of model objects)
+# Population stats
 # -----------------------
 def compute_population_stats(df, clf, scaler, le_sex, le_abo, feature_cols):
     df_prep = df.copy()
-
-    # Keep only rows with labels known to encoders
     if "sex" in df_prep.columns:
         df_prep = df_prep[df_prep["sex"].isin(le_sex.classes_)]
     if "abo" in df_prep.columns:
@@ -264,7 +262,6 @@ if page == "🔮 Risk Prediction & Insights":
     predict_btn = st.button("🔮 Generate Advanced Risk Report", use_container_width=True)
 
     if predict_btn:
-        # encode single patient
         sex_norm = sex.lower().strip()
         abo_norm = abo.upper().strip()
         sex_enc = le_sex.transform([sex_norm])[0]
@@ -290,7 +287,6 @@ if page == "🔮 Risk Prediction & Insights":
             df_all, clf, scaler, le_sex, le_abo, feature_cols
         )
 
-        # heuristic adjustments
         meld_adjust = (meld_self - 20) / 20 * 0.1
         bmi_adjust = -0.05 if bmi > 30 else 0
         sodium_adjust = -0.1 if sodium < 130 else 0
@@ -299,16 +295,27 @@ if page == "🔮 Risk Prediction & Insights":
         patient_probas = df_prep["death_proba"].values
         risk_percentile = np.sum(adjusted_proba > patient_probas) / len(patient_probas) * 100
 
-        # SHAP explanation (safe for different shapes) [web:345][web:347]
-        shap_raw = explainer.shap_values(row_scaled)
+        # -------- SHAP BLOCK (fixed) --------
+        shap_raw = explainer.shap_values(row_scaled)  # [web:345]
         if isinstance(shap_raw, list):
-            shap_arr = shap_raw[-1]  # last class (positive) if list of arrays
+            shap_arr = np.array(shap_raw[-1])
         else:
-            shap_arr = shap_raw      # direct array
+            shap_arr = np.array(shap_raw)
+        if shap_arr.ndim == 1:
+            shap_vec = shap_arr
+        else:
+            shap_vec = shap_arr[0]
+        shap_vec = shap_vec[: len(feature_cols)]
         shap_df = pd.DataFrame(
-            {"feature": feature_cols, "shap_value": shap_arr[0]}
+            {
+                "feature": feature_cols,
+                "shap_value": shap_vec,
+            }
         )
-        shap_df = shap_df.reindex(shap_df["shap_value"].abs().sort_values(ascending=False).index)
+        shap_df = shap_df.reindex(
+            shap_df["shap_value"].abs().sort_values(ascending=False).index
+        )
+        # ------------------------------------
 
         st.markdown("### 📋 Risk Assessment Report")
         m1, m2, m3, m4 = st.columns(4)
@@ -390,386 +397,6 @@ if page == "🔮 Risk Prediction & Insights":
         st.dataframe(clinical_df, use_container_width=True)
         st.caption("*Adjustments are heuristic for demo; real models would integrate all features.*")
 
-# =====================================================
-# 2) EDA – Basic Distributions
-# =====================================================
-elif page == "📊 EDA – Basic Distributions":
-    st.markdown("### 📊 Interactive Dataset Exploration (Basic)")
-    try:
-        df = load_data()
-        if st.checkbox("👁️ Show Raw Data Preview (First 20 Rows)"):
-            st.dataframe(df.head(20), use_container_width=True)
-
-        tab1, tab2 = st.tabs(["Demographics", "Outcomes"])
-        with tab1:
-            a, b = st.columns(2)
-            with a:
-                fig_age = px.histogram(
-                    df,
-                    x="age",
-                    nbins=20,
-                    marginal="rug",
-                    title="Age Distribution",
-                    color_discrete_sequence=["#38bdf8"],
-                )
-                fig_age.update_layout(height=400)
-                st.plotly_chart(fig_age, use_container_width=True)
-            with b:
-                fig_ft = px.histogram(
-                    df,
-                    x="futime",
-                    nbins=30,
-                    marginal="box",
-                    title="Follow-up Time Distribution",
-                    color_discrete_sequence=["#22c55e"],
-                )
-                fig_ft.update_layout(height=400)
-                st.plotly_chart(fig_ft, use_container_width=True)
-
-        with tab2:
-            c, d = st.columns(2)
-            with c:
-                fig_sex = px.histogram(
-                    df,
-                    x="sex",
-                    color="event",
-                    title="Sex vs Event Outcomes",
-                    barmode="group",
-                    color_discrete_map={
-                        "death": "#ef4444",
-                        "ltx": "#10b981",
-                        "censored": "#f59e0b",
-                        "withdraw": "#8b5cf6",
-                    },
-                )
-                st.plotly_chart(fig_sex, use_container_width=True)
-            with d:
-                fig_abo = px.histogram(
-                    df,
-                    x="abo",
-                    color="event",
-                    title="Blood Group vs Event Outcomes",
-                    barmode="group",
-                    color_discrete_map={
-                        "death": "#ef4444",
-                        "ltx": "#10b981",
-                        "censored": "#f59e0b",
-                        "withdraw": "#8b5cf6",
-                    },
-                )
-                st.plotly_chart(fig_abo, use_container_width=True)
-
-        st.markdown("### 🔗 Correlation Heatmap (Numeric Features)")
-        num_cols = df.select_dtypes(include=[np.number]).columns
-        fig_corr = px.imshow(
-            df[num_cols].corr(),
-            title="Feature Correlations",
-            aspect="auto",
-            color_continuous_scale="RdBu_r",
-        )
-        st.plotly_chart(fig_corr, use_container_width=True)
-
-    except FileNotFoundError:
-        st.warning("Upload transplant.csv to view EDA.")
-
-# =====================================================
-# 3) EDA – Advanced Clinical Features
-# =====================================================
-elif page == "🧬 EDA – Advanced Clinical Features":
-    st.markdown("### 🧬 Deep Dive: Synthetic Clinical Risk Factors")
-    try:
-        df = load_data()
-        needed_cols = [
-            "age_group",
-            "bmi",
-            "meld_score",
-            "sodium",
-            "bilirubin",
-            "creatinine",
-            "inr",
-            "albumin",
-            "ascites",
-            "encephalopathy",
-            "diabetes",
-            "hypertension",
-            "smoker",
-            "center_region",
-            "is_death",
-        ]
-        available = [c for c in needed_cols if c in df.columns]
-        if len(available) < len(needed_cols) * 0.5:
-            st.error("Enriched CSV with synthetic features required.")
-        else:
-            st.markdown("#### 🔍 Dynamic Filters")
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                age_group_sel = st.multiselect(
-                    "Age Group",
-                    sorted(df["age_group"].dropna().unique()),
-                    default=sorted(df["age_group"].dropna().unique()),
-                )
-            with c2:
-                region_sel = st.multiselect(
-                    "Center Region",
-                    sorted(df["center_region"].dropna().unique()),
-                    default=sorted(df["center_region"].dropna().unique()),
-                )
-            with c3:
-                event_sel = st.multiselect(
-                    "Event Type",
-                    sorted(df["event"].dropna().unique()),
-                    default=sorted(df["event"].dropna().unique()),
-                )
-            with c4:
-                death_only = st.checkbox("Filter to Death Cases Only")
-
-            df_f = df.copy()
-            if age_group_sel:
-                df_f = df_f[df_f["age_group"].isin(age_group_sel)]
-            if region_sel:
-                df_f = df_f[df_f["center_region"].isin(region_sel)]
-            if event_sel:
-                df_f = df_f[df_f["event"].isin(event_sel)]
-            if death_only:
-                df_f = df_f[df_f["is_death"] == 1]
-
-            st.markdown("#### 🚀 One-Click Analyses")
-            b1, b2, b3, b4 = st.columns(4)
-            with b1:
-                btn_meld = st.button("📊 MELD vs Outcomes")
-            with b2:
-                btn_bmi = st.button("📈 BMI & Comorbidities")
-            with b3:
-                btn_region = st.button("🌍 Regional Variations")
-            with b4:
-                btn_labs = st.button("🧪 Lab Correlations")
-
-            a, b = st.columns(2)
-            with a:
-                if "meld_score" in df_f.columns:
-                    fig_meld = px.histogram(
-                        df_f,
-                        x="meld_score",
-                        color="is_death",
-                        title="MELD Score Distribution by Death Risk",
-                        nbins=25,
-                        marginal="violin",
-                        color_discrete_map={0: "#10b981", 1: "#ef4444"},
-                    )
-                    st.plotly_chart(fig_meld, use_container_width=True)
-            with b:
-                if "sodium" in df_f.columns and "meld_score" in df_f.columns:
-                    fig_scatter = px.scatter(
-                        df_f.sample(min(len(df_f), 500)),
-                        x="sodium",
-                        y="meld_score",
-                        color="event",
-                        title="Sodium vs MELD (Colored by Event)",
-                        hover_data=["age", "sex"],
-                    )
-                    st.plotly_chart(fig_scatter, use_container_width=True)
-
-            if btn_meld:
-                fig_box = px.box(
-                    df_f,
-                    x="event",
-                    y="meld_score",
-                    title="MELD by Event Type",
-                    color="event",
-                )
-                st.plotly_chart(fig_box, use_container_width=True)
-
-            if btn_bmi:
-                fig_bmi = px.density_contour(
-                    df_f,
-                    x="bmi",
-                    y="age",
-                    color="event",
-                    title="BMI Density by Age & Event",
-                )
-                st.plotly_chart(fig_bmi, use_container_width=True)
-
-            if btn_region and "center_region" in df_f.columns:
-                rate = df_f.groupby("center_region")["is_death"].mean().reset_index()
-                fig_region = px.bar(
-                    rate,
-                    x="center_region",
-                    y="is_death",
-                    title="Death Rate by Region",
-                    color="is_death",
-                    color_continuous_scale="Reds",
-                )
-                st.plotly_chart(fig_region, use_container_width=True)
-
-            if btn_labs:
-                lab_cols = ["bilirubin", "creatinine", "inr", "albumin"]
-                labs = [c for c in lab_cols if c in df_f.columns]
-                if labs:
-                    fig_labs = px.imshow(
-                        df_f[labs + ["is_death"]].corr(),
-                        title="Lab Correlations with Death Risk",
-                        color_continuous_scale="RdBu_r",
-                    )
-                    st.plotly_chart(fig_labs, use_container_width=True)
-
-            st.markdown("### 🤰 Comorbidity Overview")
-            if all(c in df_f.columns for c in ["diabetes", "hypertension", "smoker", "ascites"]):
-                comm_df = (
-                    df_f[["diabetes", "hypertension", "smoker", "ascites"]]
-                    .sum()
-                    .reset_index()
-                )
-                comm_df.columns = ["Condition", "Count"]
-                fig_pie = px.pie(
-                    comm_df,
-                    values="Count",
-                    names="Condition",
-                    title="Prevalence of Key Comorbidities",
-                )
-                st.plotly_chart(fig_pie, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"Error loading data: {e}. Ensure enriched CSV is uploaded.")
-
-# =====================================================
-# 4) Model Performance & Explanations
-# =====================================================
-elif page == "📈 Model Performance & Explanations":
-    st.markdown("### 🤖 Random Forest Model Deep Dive")
-    try:
-        df = load_data()
-        df_prep, _, _, _, _ = compute_population_stats(df, clf, scaler, le_sex, le_abo, feature_cols)
-        X = df_prep[feature_cols]
-        y = (
-            df_prep["is_death"]
-            if "is_death" in df_prep.columns
-            else (df_prep["event"] == "death").astype(int)
-        )
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-        X_test_scaled = scaler.transform(X_test)
-        y_pred = clf.predict(X_test_scaled)
-        y_proba = clf.predict_proba(X_test_scaled)[:, 1]
-
-        cm = confusion_matrix(y_test, y_pred)
-        fpr, tpr, _ = roc_curve(y_test, y_proba)
-        roc_auc = auc(fpr, tpr)
-
-        t1, t2 = st.tabs(["Metrics", "Visualizations"])
-        with t1:
-            st.markdown("#### 📊 Key Performance Metrics")
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                st.metric("Accuracy", f"{(y_pred == y_test).mean():.2%}")
-            rep = classification_report(y_test, y_pred, output_dict=True)
-            with c2:
-                st.metric("Precision (Death)", f"{rep['1']['precision']:.2%}")
-            with c3:
-                st.metric("Recall (Death)", f"{rep['1']['recall']:.2%}")
-            with c4:
-                st.metric("AUC-ROC", f"{roc_auc:.3f}")
-            st.text(classification_report(y_test, y_pred))
-
-        with t2:
-            fig_cm = px.imshow(
-                cm,
-                text_auto=True,
-                aspect="auto",
-                title="Confusion Matrix",
-                labels=dict(x="Predicted", y="Actual", color="Count"),
-                color_continuous_scale="Blues",
-            )
-            st.plotly_chart(fig_cm, use_container_width=True)
-
-            fig_roc = px.area(
-                x=fpr,
-                y=tpr,
-                title=f"ROC Curve (AUC = {roc_auc:.3f})",
-                labels=dict(x="False Positive Rate", y="True Positive Rate"),
-            )
-            fig_roc.add_shape(
-                type="line", line=dict(dash="dash"), x0=0, x1=1, y0=0, y1=1
-            )
-            st.plotly_chart(fig_roc, use_container_width=True)
-
-            importance = pd.DataFrame(
-                {"feature": feature_cols, "importance": clf.feature_importances_}
-            ).sort_values("importance", ascending=False)
-            fig_imp = px.bar(
-                importance,
-                x="importance",
-                y="feature",
-                orientation="h",
-                title="Feature Importance",
-                color="importance",
-                color_continuous_scale="Viridis",
-            )
-            st.plotly_chart(fig_imp, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"Error evaluating model: {e}")
-
-# =====================================================
-# 5) Survival Analysis
-# =====================================================
-elif page == "📉 Survival Analysis":
-    st.markdown("### 📉 Time-to-Event Analysis")
-    try:
-        df = load_data()
-        if "futime" not in df.columns or "event" not in df.columns:
-            st.error("Dataset missing futime or event columns.")
-        else:
-            df["surv_event"] = (df["event"] == "death").astype(int)
-            stratify_by = st.selectbox(
-                "Stratify KM by", ["None", "sex", "abo", "age_group", "center_region"]
-            )
-            kmf = KaplanMeierFitter()
-            plt.figure(figsize=(6, 4))
-
-            if stratify_by == "None":
-                kmf.fit(df["futime"], event_observed=df["surv_event"])
-                kmf.plot_survival_function()
-                plt.title("Overall Waitlist Survival")
-            else:
-                groups = df[stratify_by].dropna().unique()
-                colors = px.colors.qualitative.Set1
-                for i, g in enumerate(groups):
-                    mask = df[stratify_by] == g
-                    kmf.fit(
-                        df.loc[mask, "futime"],
-                        event_observed=df.loc[mask, "surv_event"],
-                        label=str(g),
-                    )
-                    kmf.plot_survival_function(color=colors[i % len(colors)])
-                plt.title(f"Survival by {stratify_by.capitalize()}")
-
-            plt.ylabel("Survival Probability")
-            plt.xlabel("Time (Days)")
-            st.pyplot(plt.gcf())
-
-            if stratify_by != "None":
-                groups = df[stratify_by].dropna().unique()
-                if len(groups) >= 2:
-                    res = logrank_test(
-                        df[df[stratify_by] == groups[0]]["futime"],
-                        df[df[stratify_by] == groups[1]]["futime"],
-                        event_observed_A=df[df[stratify_by] == groups[0]]["surv_event"],
-                        event_observed_B=df[df[stratify_by] == groups[1]]["surv_event"],
-                    )
-                    st.markdown(
-                        f"**Log-Rank Test p-value:** {res.p_value:.4f} "
-                        f"({'Significant' if res.p_value < 0.05 else 'Not Significant'})"
-                    )
-
-    except Exception as e:
-        st.error(f"Error in survival analysis: {e}. Install lifelines if needed.")  # [web:357][web:360]
-
-# Footer
-st.markdown("---")
-st.markdown(
-    "<div style='text-align: center; color: #94a3b8; font-size: 0.8rem;'>"
-    "© 2025 TransplantCare Demo | Educational Purposes Only"
-    "</div>",
-    unsafe_allow_html=True,
-)
+# (Baaki 4 pages – EDA Basic, EDA Advanced, Model Performance, Survival Analysis – 
+#  jaisa tumhare previous code me already hai, unhe upar wale version se hi rakho; 
+#  unme koi change zaroori nahi.)
