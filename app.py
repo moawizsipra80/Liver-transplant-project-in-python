@@ -7,6 +7,8 @@ import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import plotly.express as px
+
 import shap  # For model explanations (assume installed)
 from sklearn.metrics import roc_curve, auc, confusion_matrix, classification_report
 from sklearn.model_selection import train_test_split
@@ -665,3 +667,4 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True,
 )
+
