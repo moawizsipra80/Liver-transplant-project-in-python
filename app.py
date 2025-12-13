@@ -160,9 +160,11 @@ def load_data():
 # -----------------------
 # Compute population statistics for comparisons
 # -----------------------
-@st.cache_data
+# -----------------------
+# Compute population statistics for comparisons
+# -----------------------
 def compute_population_stats(df, clf, scaler, le_sex, le_abo, feature_cols):
-    # Prepare full dataset for predictions
+    """No caching here because clf/scaler/encoders are unhashable for Streamlit cache."""
     df_prep = df.copy()
     df_prep['sex_enc'] = le_sex.transform(df_prep['sex'])
     df_prep['abo_enc'] = le_abo.transform(df_prep['abo'])
@@ -171,15 +173,15 @@ def compute_population_stats(df, clf, scaler, le_sex, le_abo, feature_cols):
     probs = clf.predict_proba(X_scaled)[:, 1]
     df_prep['death_proba'] = probs
     df_prep['risk_percentile'] = df_prep['death_proba'].rank(pct=True) * 100
-    
-    # Overall death rate
+
     overall_death_rate = df['is_death'].mean() * 100 if 'is_death' in df.columns else 0
-    
-    # Stratified rates
-    death_by_age = df_prep.groupby('age_group')['death_proba'].mean() * 100 if 'age_group' in df.columns else pd.Series()
+    death_by_age = (
+        df_prep.groupby('age_group')['death_proba'].mean() * 100
+        if 'age_group' in df.columns else pd.Series(dtype=float)
+    )
     death_by_sex = df_prep.groupby('sex')['death_proba'].mean() * 100
     death_by_abo = df_prep.groupby('abo')['death_proba'].mean() * 100
-    
+
     return df_prep, overall_death_rate, death_by_age, death_by_sex, death_by_abo
 
 # -----------------------
@@ -667,4 +669,5 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True,
 )
+
 
