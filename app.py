@@ -295,17 +295,11 @@ if page == "🔮 Risk Prediction & Insights":
         patient_probas = df_prep["death_proba"].values
         risk_percentile = np.sum(adjusted_proba > patient_probas) / len(patient_probas) * 100
 
-        # -------- SHAP BLOCK (fixed) --------
-        shap_raw = explainer.shap_values(row_scaled)  # [web:345]
-        if isinstance(shap_raw, list):
-            shap_arr = np.array(shap_raw[-1])
-        else:
-            shap_arr = np.array(shap_raw)
-        if shap_arr.ndim == 1:
-            shap_vec = shap_arr
-        else:
-            shap_vec = shap_arr[0]
-        shap_vec = shap_vec[: len(feature_cols)]
+        # -------- SHAP BLOCK (fully flattened) --------
+        shap_raw = explainer.shap_values(row_scaled)
+        shap_arr = np.array(shap_raw[-1]) if isinstance(shap_raw, list) else np.array(shap_raw)
+        shap_flat = shap_arr.reshape(-1)          # flatten to 1D [web:346]
+        shap_vec = shap_flat[: len(feature_cols)] # match feature count
         shap_df = pd.DataFrame(
             {
                 "feature": feature_cols,
@@ -315,7 +309,7 @@ if page == "🔮 Risk Prediction & Insights":
         shap_df = shap_df.reindex(
             shap_df["shap_value"].abs().sort_values(ascending=False).index
         )
-        # ------------------------------------
+        # ----------------------------------------------
 
         st.markdown("### 📋 Risk Assessment Report")
         m1, m2, m3, m4 = st.columns(4)
@@ -397,6 +391,6 @@ if page == "🔮 Risk Prediction & Insights":
         st.dataframe(clinical_df, use_container_width=True)
         st.caption("*Adjustments are heuristic for demo; real models would integrate all features.*")
 
-# (Baaki 4 pages – EDA Basic, EDA Advanced, Model Performance, Survival Analysis – 
-#  jaisa tumhare previous code me already hai, unhe upar wale version se hi rakho; 
-#  unme koi change zaroori nahi.)
+# NOTE: Tum apne previous app.py me jo baaki 4 pages (EDA – Basic, EDA – Advanced,
+# Model Performance, Survival Analysis) likh chuke ho, unhe as-is is file ke neeche
+# paste rakho. Un me SHAP ka use nahi hai, is liye unme koi aur change zaroori nahi.
