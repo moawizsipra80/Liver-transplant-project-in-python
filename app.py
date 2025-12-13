@@ -5,7 +5,6 @@ import pickle
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
-import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import shap
@@ -119,19 +118,19 @@ st.markdown(
     </style>
     """,
     unsafe_allow_html=True,
-)  # [web:340]
+)  # [web:350]
 
 # -----------------------
 # Load saved ML objects
 # -----------------------
 @st.cache_resource
 def load_objects():
-    clf = pickle.load(open('clf.pkl', 'rb'))
-    scaler = pickle.load(open('scaler.pkl', 'rb'))
-    le_sex = pickle.load(open('le_sex.pkl', 'rb'))
-    le_abo = pickle.load(open('le_abo.pkl', 'rb'))
-    feature_cols = pickle.load(open('feature_cols.pkl', 'rb'))
-    explainer = shap.TreeExplainer(clf)
+    clf = pickle.load(open("clf.pkl", "rb"))
+    scaler = pickle.load(open("scaler.pkl", "rb"))
+    le_sex = pickle.load(open("le_sex.pkl", "rb"))
+    le_abo = pickle.load(open("le_abo.pkl", "rb"))
+    feature_cols = pickle.load(open("feature_cols.pkl", "rb"))
+    explainer = shap.TreeExplainer(clf)  # SHAP explainer for tree model [web:345]
     return clf, scaler, le_sex, le_abo, feature_cols, explainer
 
 clf, scaler, le_sex, le_abo, feature_cols, explainer = load_objects()
@@ -142,43 +141,41 @@ clf, scaler, le_sex, le_abo, feature_cols, explainer = load_objects()
 @st.cache_data
 def load_data():
     df = pd.read_csv("transplant.csv")
-    # normalize sex/abo same as model expected
-    if 'sex' in df.columns:
-        df['sex'] = df['sex'].astype(str).str.strip().str.lower()
-    if 'abo' in df.columns:
-        df['abo'] = df['abo'].astype(str).str.strip().str.upper()
+    if "sex" in df.columns:
+        df["sex"] = df["sex"].astype(str).str.strip().str.lower()
+    if "abo" in df.columns:
+        df["abo"] = df["abo"].astype(str).str.strip().str.upper()
     return df
 
 # -----------------------
-# Population stats (no cache – uses model objects)
+# Population stats (no cache because of model objects)
 # -----------------------
 def compute_population_stats(df, clf, scaler, le_sex, le_abo, feature_cols):
     df_prep = df.copy()
 
-    # filter to only known labels for encoders
-    known_sex = set(le_sex.classes_)
-    known_abo = set(le_abo.classes_)
-    if 'sex' in df_prep.columns:
-        df_prep = df_prep[df_prep['sex'].isin(known_sex)]
-    if 'abo' in df_prep.columns:
-        df_prep = df_prep[df_prep['abo'].isin(known_abo)]
+    # Keep only rows with labels known to encoders
+    if "sex" in df_prep.columns:
+        df_prep = df_prep[df_prep["sex"].isin(le_sex.classes_)]
+    if "abo" in df_prep.columns:
+        df_prep = df_prep[df_prep["abo"].isin(le_abo.classes_)]
 
-    df_prep['sex_enc'] = le_sex.transform(df_prep['sex'])
-    df_prep['abo_enc'] = le_abo.transform(df_prep['abo'])
+    df_prep["sex_enc"] = le_sex.transform(df_prep["sex"])
+    df_prep["abo_enc"] = le_abo.transform(df_prep["abo"])
 
     X = df_prep[feature_cols]
     X_scaled = scaler.transform(X)
     probs = clf.predict_proba(X_scaled)[:, 1]
-    df_prep['death_proba'] = probs
-    df_prep['risk_percentile'] = df_prep['death_proba'].rank(pct=True) * 100
+    df_prep["death_proba"] = probs
+    df_prep["risk_percentile"] = df_prep["death_proba"].rank(pct=True) * 100
 
-    overall_death_rate = df_prep['death_proba'].mean() * 100
+    overall_death_rate = df_prep["death_proba"].mean() * 100
     death_by_age = (
-        df_prep.groupby('age_group')['death_proba'].mean() * 100
-        if 'age_group' in df_prep.columns else pd.Series(dtype=float)
+        df_prep.groupby("age_group")["death_proba"].mean() * 100
+        if "age_group" in df_prep.columns
+        else pd.Series(dtype=float)
     )
-    death_by_sex = df_prep.groupby('sex')['death_proba'].mean() * 100
-    death_by_abo = df_prep.groupby('abo')['death_proba'].mean() * 100
+    death_by_sex = df_prep.groupby("sex")["death_proba"].mean() * 100
+    death_by_abo = df_prep.groupby("abo")["death_proba"].mean() * 100
 
     return df_prep, overall_death_rate, death_by_age, death_by_sex, death_by_abo
 
@@ -240,8 +237,8 @@ if page == "🔮 Risk Prediction & Insights":
             year = st.number_input("Listing Year", 1985, 2025, 1995)
             futime = st.number_input("Follow-up Time (days)", 0, 2000, 200)
         with col2:
-            sex = st.selectbox("Sex", ['m', 'f'])
-            abo = st.selectbox("Blood Group", ['A', 'B', 'AB', 'O'])
+            sex = st.selectbox("Sex", ["m", "f"])
+            abo = st.selectbox("Blood Group", ["A", "B", "AB", "O"])
 
     with tab2:
         col3, col4 = st.columns(2)
@@ -267,19 +264,23 @@ if page == "🔮 Risk Prediction & Insights":
     predict_btn = st.button("🔮 Generate Advanced Risk Report", use_container_width=True)
 
     if predict_btn:
-        # encode single patient (same normalization as dataset)
+        # encode single patient
         sex_norm = sex.lower().strip()
         abo_norm = abo.upper().strip()
         sex_enc = le_sex.transform([sex_norm])[0]
         abo_enc = le_abo.transform([abo_norm])[0]
 
-        row = pd.DataFrame([{
-            'age': age,
-            'year': year,
-            'futime': futime,
-            'sex_enc': sex_enc,
-            'abo_enc': abo_enc,
-        }])
+        row = pd.DataFrame(
+            [
+                {
+                    "age": age,
+                    "year": year,
+                    "futime": futime,
+                    "sex_enc": sex_enc,
+                    "abo_enc": abo_enc,
+                }
+            ]
+        )
         row_scaled = scaler.transform(row[feature_cols])
         pred = clf.predict(row_scaled)[0]
         proba = float(clf.predict_proba(row_scaled)[0][1])
@@ -289,17 +290,25 @@ if page == "🔮 Risk Prediction & Insights":
             df_all, clf, scaler, le_sex, le_abo, feature_cols
         )
 
+        # heuristic adjustments
         meld_adjust = (meld_self - 20) / 20 * 0.1
         bmi_adjust = -0.05 if bmi > 30 else 0
         sodium_adjust = -0.1 if sodium < 130 else 0
         adjusted_proba = float(np.clip(proba + meld_adjust + bmi_adjust + sodium_adjust, 0, 1))
 
-        patient_probas = df_prep['death_proba'].values
+        patient_probas = df_prep["death_proba"].values
         risk_percentile = np.sum(adjusted_proba > patient_probas) / len(patient_probas) * 100
 
-        shap_values = explainer.shap_values(row_scaled)[1]
-        shap_df = pd.DataFrame({'feature': feature_cols, 'shap_value': shap_values[0]})
-        shap_df = shap_df.reindex(shap_df['shap_value'].abs().sort_values(ascending=False).index)
+        # SHAP explanation (safe for different shapes) [web:345][web:347]
+        shap_raw = explainer.shap_values(row_scaled)
+        if isinstance(shap_raw, list):
+            shap_arr = shap_raw[-1]  # last class (positive) if list of arrays
+        else:
+            shap_arr = shap_raw      # direct array
+        shap_df = pd.DataFrame(
+            {"feature": feature_cols, "shap_value": shap_arr[0]}
+        )
+        shap_df = shap_df.reindex(shap_df["shap_value"].abs().sort_values(ascending=False).index)
 
         st.markdown("### 📋 Risk Assessment Report")
         m1, m2, m3, m4 = st.columns(4)
@@ -311,7 +320,11 @@ if page == "🔮 Risk Prediction & Insights":
             label = "HIGH RISK 🚨" if pred == 1 else "LOW RISK ✅"
             st.metric("Predicted Outcome", label)
         with m4:
-            st.metric("Risk Percentile", f"{risk_percentile:.0f}%", delta=f"vs {overall_death_rate:.1f}% avg")
+            st.metric(
+                "Risk Percentile",
+                f"{risk_percentile:.0f}%",
+                delta=f"vs {overall_death_rate:.1f}% avg",
+            )
 
         if adjusted_proba < 0.15:
             txt = "Low risk: Monitor routinely."
@@ -329,10 +342,12 @@ if page == "🔮 Risk Prediction & Insights":
         with c1:
             sex_mean = float(death_by_sex.get(sex_norm, overall_death_rate))
             abo_mean = float(death_by_abo.get(abo_norm, overall_death_rate))
-            comp_df = pd.DataFrame({
-                "Group": ["Your Risk", "Overall Avg", "By Sex", "By ABO"],
-                "Rate (%)": [adjusted_proba*100, overall_death_rate, sex_mean, abo_mean],
-            })
+            comp_df = pd.DataFrame(
+                {
+                    "Group": ["Your Risk", "Overall Avg", "By Sex", "By ABO"],
+                    "Rate (%)": [adjusted_proba * 100, overall_death_rate, sex_mean, abo_mean],
+                }
+            )
             fig_comp = px.bar(
                 comp_df,
                 x="Group",
@@ -357,19 +372,21 @@ if page == "🔮 Risk Prediction & Insights":
             st.plotly_chart(fig_shap, use_container_width=True)
 
         st.markdown("### 🩺 Clinical Feature Insights")
-        clinical_df = pd.DataFrame({
-            "Feature": ["BMI", "MELD", "Sodium", "Bilirubin", "Creatinine", "INR", "Albumin"],
-            "Value": [bmi, meld_self, sodium, bilirubin, creatinine, inr, albumin],
-            "Status": [
-                "Obese" if bmi > 30 else "Normal",
-                "High" if meld_self > 25 else "Moderate",
-                "Low" if sodium < 130 else "Normal",
-                "Elevated" if bilirubin > 2 else "Normal",
-                "High" if creatinine > 1.5 else "Normal",
-                "Elevated" if inr > 1.5 else "Normal",
-                "Low" if albumin < 3.5 else "Normal",
-            ],
-        })
+        clinical_df = pd.DataFrame(
+            {
+                "Feature": ["BMI", "MELD", "Sodium", "Bilirubin", "Creatinine", "INR", "Albumin"],
+                "Value": [bmi, meld_self, sodium, bilirubin, creatinine, inr, albumin],
+                "Status": [
+                    "Obese" if bmi > 30 else "Normal",
+                    "High" if meld_self > 25 else "Moderate",
+                    "Low" if sodium < 130 else "Normal",
+                    "Elevated" if bilirubin > 2 else "Normal",
+                    "High" if creatinine > 1.5 else "Normal",
+                    "Elevated" if inr > 1.5 else "Normal",
+                    "Low" if albumin < 3.5 else "Normal",
+                ],
+            }
+        )
         st.dataframe(clinical_df, use_container_width=True)
         st.caption("*Adjustments are heuristic for demo; real models would integrate all features.*")
 
@@ -387,15 +404,25 @@ elif page == "📊 EDA – Basic Distributions":
         with tab1:
             a, b = st.columns(2)
             with a:
-                fig_age = px.histogram(df, x="age", nbins=20, marginal="rug",
-                                       title="Age Distribution",
-                                       color_discrete_sequence=["#38bdf8"])
+                fig_age = px.histogram(
+                    df,
+                    x="age",
+                    nbins=20,
+                    marginal="rug",
+                    title="Age Distribution",
+                    color_discrete_sequence=["#38bdf8"],
+                )
                 fig_age.update_layout(height=400)
                 st.plotly_chart(fig_age, use_container_width=True)
             with b:
-                fig_ft = px.histogram(df, x="futime", nbins=30, marginal="box",
-                                      title="Follow-up Time Distribution",
-                                      color_discrete_sequence=["#22c55e"])
+                fig_ft = px.histogram(
+                    df,
+                    x="futime",
+                    nbins=30,
+                    marginal="box",
+                    title="Follow-up Time Distribution",
+                    color_discrete_sequence=["#22c55e"],
+                )
                 fig_ft.update_layout(height=400)
                 st.plotly_chart(fig_ft, use_container_width=True)
 
@@ -403,18 +430,32 @@ elif page == "📊 EDA – Basic Distributions":
             c, d = st.columns(2)
             with c:
                 fig_sex = px.histogram(
-                    df, x="sex", color="event",
-                    title="Sex vs Event Outcomes", barmode="group",
-                    color_discrete_map={"death": "#ef4444", "ltx": "#10b981",
-                                        "censored": "#f59e0b", "withdraw": "#8b5cf6"},
+                    df,
+                    x="sex",
+                    color="event",
+                    title="Sex vs Event Outcomes",
+                    barmode="group",
+                    color_discrete_map={
+                        "death": "#ef4444",
+                        "ltx": "#10b981",
+                        "censored": "#f59e0b",
+                        "withdraw": "#8b5cf6",
+                    },
                 )
                 st.plotly_chart(fig_sex, use_container_width=True)
             with d:
                 fig_abo = px.histogram(
-                    df, x="abo", color="event",
-                    title="Blood Group vs Event Outcomes", barmode="group",
-                    color_discrete_map={"death": "#ef4444", "ltx": "#10b981",
-                                        "censored": "#f59e0b", "withdraw": "#8b5cf6"},
+                    df,
+                    x="abo",
+                    color="event",
+                    title="Blood Group vs Event Outcomes",
+                    barmode="group",
+                    color_discrete_map={
+                        "death": "#ef4444",
+                        "ltx": "#10b981",
+                        "censored": "#f59e0b",
+                        "withdraw": "#8b5cf6",
+                    },
                 )
                 st.plotly_chart(fig_abo, use_container_width=True)
 
@@ -439,9 +480,21 @@ elif page == "🧬 EDA – Advanced Clinical Features":
     try:
         df = load_data()
         needed_cols = [
-            "age_group", "bmi", "meld_score", "sodium", "bilirubin",
-            "creatinine", "inr", "albumin", "ascites", "encephalopathy",
-            "diabetes", "hypertension", "smoker", "center_region", "is_death",
+            "age_group",
+            "bmi",
+            "meld_score",
+            "sodium",
+            "bilirubin",
+            "creatinine",
+            "inr",
+            "albumin",
+            "ascites",
+            "encephalopathy",
+            "diabetes",
+            "hypertension",
+            "smoker",
+            "center_region",
+            "is_death",
         ]
         available = [c for c in needed_cols if c in df.columns]
         if len(available) < len(needed_cols) * 0.5:
@@ -518,14 +571,20 @@ elif page == "🧬 EDA – Advanced Clinical Features":
 
             if btn_meld:
                 fig_box = px.box(
-                    df_f, x="event", y="meld_score",
-                    title="MELD by Event Type", color="event",
+                    df_f,
+                    x="event",
+                    y="meld_score",
+                    title="MELD by Event Type",
+                    color="event",
                 )
                 st.plotly_chart(fig_box, use_container_width=True)
 
             if btn_bmi:
                 fig_bmi = px.density_contour(
-                    df_f, x="bmi", y="age", color="event",
+                    df_f,
+                    x="bmi",
+                    y="age",
+                    color="event",
                     title="BMI Density by Age & Event",
                 )
                 st.plotly_chart(fig_bmi, use_container_width=True)
@@ -555,7 +614,11 @@ elif page == "🧬 EDA – Advanced Clinical Features":
 
             st.markdown("### 🤰 Comorbidity Overview")
             if all(c in df_f.columns for c in ["diabetes", "hypertension", "smoker", "ascites"]):
-                comm_df = df_f[["diabetes", "hypertension", "smoker", "ascites"]].sum().reset_index()
+                comm_df = (
+                    df_f[["diabetes", "hypertension", "smoker", "ascites"]]
+                    .sum()
+                    .reset_index()
+                )
                 comm_df.columns = ["Condition", "Count"]
                 fig_pie = px.pie(
                     comm_df,
@@ -577,7 +640,11 @@ elif page == "📈 Model Performance & Explanations":
         df = load_data()
         df_prep, _, _, _, _ = compute_population_stats(df, clf, scaler, le_sex, le_abo, feature_cols)
         X = df_prep[feature_cols]
-        y = (df_prep['event'] == 'death').astype(int) if 'is_death' not in df_prep.columns else df_prep['is_death']
+        y = (
+            df_prep["is_death"]
+            if "is_death" in df_prep.columns
+            else (df_prep["event"] == "death").astype(int)
+        )
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y
         )
@@ -606,7 +673,9 @@ elif page == "📈 Model Performance & Explanations":
 
         with t2:
             fig_cm = px.imshow(
-                cm, text_auto=True, aspect="auto",
+                cm,
+                text_auto=True,
+                aspect="auto",
                 title="Confusion Matrix",
                 labels=dict(x="Predicted", y="Actual", color="Count"),
                 color_continuous_scale="Blues",
@@ -614,7 +683,8 @@ elif page == "📈 Model Performance & Explanations":
             st.plotly_chart(fig_cm, use_container_width=True)
 
             fig_roc = px.area(
-                x=fpr, y=tpr,
+                x=fpr,
+                y=tpr,
                 title=f"ROC Curve (AUC = {roc_auc:.3f})",
                 labels=dict(x="False Positive Rate", y="True Positive Rate"),
             )
@@ -623,10 +693,9 @@ elif page == "📈 Model Performance & Explanations":
             )
             st.plotly_chart(fig_roc, use_container_width=True)
 
-            importance = pd.DataFrame({
-                "feature": feature_cols,
-                "importance": clf.feature_importances_,
-            }).sort_values("importance", ascending=False)
+            importance = pd.DataFrame(
+                {"feature": feature_cols, "importance": clf.feature_importances_}
+            ).sort_values("importance", ascending=False)
             fig_imp = px.bar(
                 importance,
                 x="importance",
@@ -648,10 +717,10 @@ elif page == "📉 Survival Analysis":
     st.markdown("### 📉 Time-to-Event Analysis")
     try:
         df = load_data()
-        if 'futime' not in df.columns or 'event' not in df.columns:
+        if "futime" not in df.columns or "event" not in df.columns:
             st.error("Dataset missing futime or event columns.")
         else:
-            df['surv_event'] = (df['event'] == 'death').astype(int)
+            df["surv_event"] = (df["event"] == "death").astype(int)
             stratify_by = st.selectbox(
                 "Stratify KM by", ["None", "sex", "abo", "age_group", "center_region"]
             )
@@ -667,7 +736,11 @@ elif page == "📉 Survival Analysis":
                 colors = px.colors.qualitative.Set1
                 for i, g in enumerate(groups):
                     mask = df[stratify_by] == g
-                    kmf.fit(df.loc[mask, "futime"], event_observed=df.loc[mask, "surv_event"], label=str(g))
+                    kmf.fit(
+                        df.loc[mask, "futime"],
+                        event_observed=df.loc[mask, "surv_event"],
+                        label=str(g),
+                    )
                     kmf.plot_survival_function(color=colors[i % len(colors)])
                 plt.title(f"Survival by {stratify_by.capitalize()}")
 
@@ -690,7 +763,7 @@ elif page == "📉 Survival Analysis":
                     )
 
     except Exception as e:
-        st.error(f"Error in survival analysis: {e}")
+        st.error(f"Error in survival analysis: {e}. Install lifelines if needed.")  # [web:357][web:360]
 
 # Footer
 st.markdown("---")
