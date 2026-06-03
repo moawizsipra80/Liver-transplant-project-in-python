@@ -1,77 +1,74 @@
-# TransplantCare – Liver Transplant Death Risk Predictor
+# 👋 Hi, I'm **moawizsipra80**
 
-This project is my Introduction to Data Science (IDS) term project. It uses real liver transplant waitlist data to predict the risk of death for patients based on their age, sex, blood group, listing year, and follow‑up time.
+I’m a Python and Data Science learner focused on building practical, real-world healthcare analytics projects.
 
-## 1. Project Overview
+---
 
-- **Goal:** Estimate death risk for liver transplant waitlist patients.
-- **Dataset:** `transplant.csv` (age, sex, blood group, year, futime, event).
-- **Target:** Binary label `death_flag`  
-  - `1` = patient died on waitlist  
-  - `0` = transplanted / censored / withdrawn
-- **Model:** Random Forest classifier (scikit‑learn).
-- **App:** Deployed using Streamlit for interactive, user‑input based prediction.
+## 🚀 Featured Project
 
-## 2. Data & Features
+### **TransplantCare – Liver Transplant Death Risk Predictor**
+A machine learning + Streamlit project that estimates waitlist death risk for liver transplant patients using clinical and demographic inputs.
 
-Original columns (from `transplant.csv`):
+**What this project does:**
+- Predicts death risk using a trained **Random Forest** classifier
+- Provides **probability-based risk scoring**
+- Includes **interactive visual analytics** and explainability elements
+- Demonstrates end-to-end workflow from data preprocessing to deployment
 
-- `age` – Patient age (years)
-- `sex` – `m` or `f`
-- `abo` – Blood group (`A`, `B`, `AB`, `O`)
-- `year` – Listing year
-- `futime` – Follow‑up time (days)
-- `event` – Outcome (`death`, `ltx`, `censored`, `withdraw`)
+---
 
-Engineered columns used for modelling:
+## 🧠 Skills Demonstrated in This Repository
 
-- `death_flag` – 1 if `event == 'death'`, else 0
-- `sex_enc` – Encoded sex (LabelEncoder)
-- `abo_enc` – Encoded blood group (LabelEncoder)
+- **Python** (data pipeline + app logic)
+- **Machine Learning** with scikit-learn
+- **Data Cleaning & Feature Engineering**
+- **Model Evaluation** (classification metrics, confusion matrix, ROC/AUC)
+- **Model Explainability** with SHAP
+- **Survival Analysis** with lifelines
+- **Data Visualization** with Plotly, Matplotlib, and Seaborn
+- **App Deployment** with Streamlit
 
-Final feature vector:
+---
 
-- `['age', 'year', 'futime', 'sex_enc', 'abo_enc']`
+## 🛠 Tech Stack
 
-## 3. Modelling Pipeline
+`Python` `Pandas` `NumPy` `Scikit-learn` `Streamlit` `Plotly` `Matplotlib` `Seaborn` `SHAP` `Lifelines`
 
-1. Load and inspect `transplant.csv`.
-2. Create `death_flag` as the binary target.
-3. Encode `sex` and `abo` with `LabelEncoder`.
-4. Handle missing ages by mean imputation.
-5. Split into train/test (80/20).
-6. Scale numeric features with `StandardScaler`.
-7. Train a `RandomForestClassifier`.
-8. Evaluate using accuracy, confusion matrix, and classification report.
-9. Save model and preprocessing objects as:
-   - `clf.pkl`
-   - `scaler.pkl`
-   - `le_sex.pkl`
-   - `le_abo.pkl`
-   - `feature_cols.pkl`
+---
 
-## 4. Streamlit App
+## 📂 Repository Structure
 
-The Streamlit app (`app.py`) loads the saved model and allows the user to enter:
+- `app.py` → Streamlit application
+- `requirements.txt` → project dependencies
+- `transplant.csv` → dataset
+- `clf.pkl` → trained model
+- `scaler.pkl` → fitted scaler
+- `le_sex.pkl`, `le_abo.pkl` → encoders
+- `feature_cols.pkl` → model feature order
 
-- Age  
-- Listing year  
-- Follow‑up time (days)  
-- Sex (`m` / `f`)  
-- Blood group (`A` / `B` / `AB` / `O`)
+---
 
-On clicking **“Predict death risk”**, the app:
+## ⚙️ Run Locally
 
-1. Encodes the categorical inputs using the saved encoders.
-2. Scales the features using the saved scaler.
-3. Uses the Random Forest model to predict:
-   - A binary death flag (high‑risk or low‑risk).
-   - A probability score for death.
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
 
-The app displays a clear message:
-- **High Risk (death)** or  
-- **Low Risk (no death)**  
-along with the estimated death probability.
+---
 
-## 5. How to Run Locally
+## 📈 Project Highlights
 
+- Built a complete prediction workflow from raw data to interactive app
+- Added user-friendly UI for clinical risk exploration
+- Integrated model insights for transparent decision support
+- Structured the app into prediction, EDA, and survival-analysis views
+
+---
+
+## 🤝 Let’s Connect
+
+- GitHub: [github.com/moawizsipra80](https://github.com/moawizsipra80)
+- Project feedback: open an issue in this repository
+
+> If you want, I can also create a **separate profile README** (`moawizsipra80/README.md`) with banner, badges, contact links, and a polished “About Me” section ready for your GitHub profile page.
